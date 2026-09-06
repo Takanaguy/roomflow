@@ -199,4 +199,6 @@ Le projet doit donner l'impression d'un vrai petit produit terminé et soigné, 
 
 ## 11. Journal d'avancement
 
-- **06/09/2026** — Scaffolding Next.js 15 (App Router) + TypeScript + Tailwind + ESLint, `npm create-next-app`. Prochaine étape : MongoDB Atlas + modèles Mongoose.
+- **06/09/2026** — Scaffolding Next.js 16.3.4 (App Router) + TypeScript + Tailwind + ESLint. Dépendances installées : mongoose, next-auth@beta (Auth.js v5.0.0-beta.32), bcryptjs, zod. Connexion MongoDB (`src/lib/mongodb.ts`, cache anti-reconnexion en hot-reload) et les 6 modèles Mongoose de la section 7 (`src/models/`). `.env.example` documente les 4 comptes externes à créer : MongoDB Atlas, Google OAuth, GitHub OAuth, Resend. Premier commit `30a895f`, dépôt local uniquement (pas encore sur GitHub).
+  - ⚠ Next.js 16 introduit `LayoutProps<'/route'>` et `PageProps<'/route'>`, des helpers de types globaux générés à partir de l'arborescence — à utiliser au lieu de typer `params: Promise<{...}>` à la main. Voir `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/{layout,page}.md`.
+  - **Prochaine étape** : Tanguy doit créer les 4 comptes listés dans `.env.example` (au moins MongoDB Atlas pour pouvoir tester la connexion) avant qu'on attaque NextAuth et la création/le rejoint d'une colocation (fin de la Semaine 1 du planning section 9).
