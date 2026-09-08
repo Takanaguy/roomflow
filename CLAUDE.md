@@ -219,7 +219,7 @@ Cocher au fur et à mesure. Découpée en lots testables d'un coup, pas fichier 
 - [ ] **Lot 6 — Tâches** : CRUD, récurrence, vue Kanban avec drag & drop (dnd-kit), historique
 - [ ] **Lot 7 — Liste de courses** : ajout/coche/suppression partagés, historique
 - [ ] **Lot 8 — Dashboard** : vue d'ensemble + graphique des dépenses par catégorie (Recharts)
-- [ ] **Lot 9 — Emails** (Resend, compte à créer à ce moment-là) : ajout à une colocation, dépense qui concerne, rappel de tâche
+- [ ] **Lot 9 — Emails** (Resend, compte à créer à ce moment-là) : ajout à une colocation, dépense qui concerne, rappel de tâche, **mot de passe oublié** (demandé par Tanguy le 08/09/2026 — regroupé ici plutôt que fait à part, car ça dépend de Resend pour l'envoi du lien de réinitialisation ; le faire avant aurait voulu dire soit attendre, soit bricoler un envoi factice puis tout refaire)
 - [ ] **Lot 10 — Export PDF** : récapitulatif mensuel
 - [ ] **Lot 11 — Finitions** : responsive, erreurs/chargements, README pro (stack, captures, choix techniques, limites), déploiement Vercel + lien ajouté au portfolio
 
@@ -233,3 +233,28 @@ Chaque lot = plusieurs fichiers construits d'un coup, puis une passe de test gro
 - Après `signIn()`/`fetch("/api/register")`, utiliser `router.push() + router.refresh()`, jamais `window.location.href` (repéré par le lint) : `refresh()` est nécessaire pour que `useSession()` et les Server Components voient la session fraîchement posée sans recharger toute la page.
 - Design volontairement minimal (Tailwind par défaut, zinc/gris) — décision de Tanguy du 08/09/2026, pas de pass design dédié pour RoomFlow.
 - Testé en conditions réelles : accès direct à `/tableau-de-bord` sans session → redirigé vers `/connexion?callbackUrl=...` (pas le gabarit générique) ; inscription complète par formulaire → connexion auto → atterrissage sur la page protégée avec le bon nom ; en-tête reflète l'état connecté sans rechargement de page. Compte de test nettoyé après coup.
+
+### Corrections du 08/09/2026 (retours de Tanguy après test)
+
+- **Sélecteur de compte Google** : sans `authorization.params.prompt: "select_account"`, Google reconnecte automatiquement sur le dernier compte ayant autorisé l'app, sans jamais proposer d'en choisir un autre. Corrigé dans `src/auth.ts`. Vérifié en conditions réelles : Google affiche désormais "Sélectionnez un compte" avec "Utiliser un autre compte" (avant : redirection directe, aucun choix).
+- **Nom affiché modifiable** : `/profil` (protégée, ajoutée au matcher de `proxy.ts`) + `PATCH /api/profil`. Le nom Google d'origine ("L&T gaming") n'était déjà écrasé qu'à la création du compte, jamais aux connexions suivantes — il manquait juste un endroit pour le changer soi-même.
+  - Piège rencontré : `useSession().update({ name })` ne suffit pas seul. Il faut aussi gérer `trigger === "update"` dans le callback `jwt` (`auth.ts`) pour que la nouvelle valeur soit réellement écrite dans le jeton signé, sinon le nouveau nom ne persiste que le temps de la page en cours et redisparaît au rechargement suivant. La doc Auth.js prévient explicitement que `session` (la donnée passée par le client à `update()`) doit être revalidée avant d'être utilisée : c'est fait (non vide, trim).
+  - Vérifié en conditions réelles, deux niveaux : la base Mongo reflète le nouveau nom juste après le PATCH, ET une navigation fraîche vers une autre page (pas juste un changement d'état React) affiche toujours le nouveau nom, preuve que le cookie de session a bien été réémis.
+
+## 13. Architecture technique (pourquoi pas MVC/OOP classique)
+
+Question de Tanguy le 08/09/2026. Décision : **pas de MVC explicite avec des classes Controller**, ni d'archi orientée objet côté domaine (les modèles Mongoose ne sont pas manipulés comme des objets métier riches, juste des schémas + requêtes). Structure retenue, 4 couches :
+
+```
+src/models/       Schémas Mongoose (donnée)
+src/lib/          Logique métier pure (fonctions), independante du framework
+src/app/api/**    Route Handlers : couche HTTP fine, validation Zod + appel a src/lib
+src/app/**/page   Server Components : lisent les donnees directement pour le premier rendu
+src/components/   UI reutilisable, Client Components la ou il faut de l'interactivite
+```
+
+**Pourquoi pas de classe Controller à la Laravel/Symfony (dont Tanguy a l'habitude via CodeIgniter/Laravel)** : Next.js App Router fait déjà ce travail via le routage par fichiers + les Server Components. Rajouter une couche de classes `HouseholdController`, `ExpenseController` etc. par-dessus reviendrait à réimplémenter à la main ce que le framework fait déjà, sans bénéfice réel sur un projet de cette taille — juste de la cérémonie en plus.
+
+**Pourquoi extraire `src/lib/` plutôt que tout écrire dans les Route Handlers** : l'algorithme de simplification des dettes (section 4.4) est la pièce la plus complexe et la plus valorisable du projet — explicitement mise en avant dans le README attendu (section 10). En la gardant comme fonction pure sans dépendance à Next.js ou HTTP (entrée : soldes, sortie : liste de virements), elle devient : testable isolément sans lancer de serveur, réutilisable depuis plusieurs endroits (une route API, une page Server Component, l'export PDF), et facile à montrer/expliquer telle quelle à un recruteur.
+
+**Convention à suivre pour les prochains lots** : toute logique de calcul un peu significative (soldes, simplification des dettes, rotation des tâches récurrentes) va dans `src/lib/`, pas directement dans une route. Les routes API restent fines : valider l'entrée, appeler `src/lib/`, mettre en forme la réponse.

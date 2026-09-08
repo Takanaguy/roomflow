@@ -9,9 +9,15 @@ import UserModel from "@/models/User";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // Google et GitHub lisent leurs identifiants automatiquement depuis
   // AUTH_GOOGLE_ID/SECRET et AUTH_GITHUB_ID/SECRET (convention Auth.js v5) :
-  // pas besoin de les passer explicitement ici.
+  // pas besoin de les passer explicitement ici. clientId/clientSecret
+  // restent auto-inferes meme quand on personnalise d'autres options.
   providers: [
-    Google,
+    Google({
+      // Sans ca, Google saute l'ecran de choix des lors qu'un compte a
+      // deja autorise l'app dans ce navigateur, et reconnecte silencieusement
+      // sur ce compte-la sans possibilite d'en choisir un autre.
+      authorization: { params: { prompt: "select_account" } },
+    }),
     GitHub,
     Credentials({
       credentials: {
@@ -109,8 +115,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true;
     },
 
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user?.id) token.id = user.id;
+
+      // Declenche par useSession().update({ name }) sur /profil. La donnee
+      // vient du client : on la revalide plutot que de faire confiance au
+      // contenu de `session` (avertissement explicite de la doc Auth.js).
+      if (trigger === "update" && typeof session?.name === "string") {
+        const name = session.name.trim();
+        if (name) token.name = name;
+      }
+
       return token;
     },
 

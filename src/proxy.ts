@@ -15,5 +15,5 @@ export const config = {
   // A completer au fil des lots : toute nouvelle zone reservee aux
   // utilisateurs connectes (colocations, depenses...) doit rejoindre cette
   // liste, sinon elle reste accessible sans etre connecte.
-  matcher: ["/tableau-de-bord/:path*"],
+  matcher: ["/tableau-de-bord/:path*", "/profil/:path*"],
 };

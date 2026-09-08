@@ -19,7 +19,9 @@ export default function Header() {
               <Link href="/tableau-de-bord" className="text-zinc-600 hover:text-zinc-950">
                 Tableau de bord
               </Link>
-              <span className="text-zinc-400">{session.user.name}</span>
+              <Link href="/profil" className="text-zinc-600 hover:text-zinc-950">
+                {session.user.name}
+              </Link>
               <button
                 type="button"
                 onClick={() => signOut({ callbackUrl: "/" })}
