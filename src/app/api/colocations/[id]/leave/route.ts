@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { getHouseholdForMember, hasOutstandingDebt } from "@/lib/households";
+import {
+  getHouseholdForMember,
+  hasOutstandingDebt,
+  promouvoirDoyen,
+} from "@/lib/households";
 import type { HouseholdMember } from "@/models/Household";
 
 const bodySchema = z.object({ force: z.boolean().optional() });
@@ -40,10 +44,18 @@ export async function POST(
     }
   }
 
-  const { household } = result;
+  const { household, membership } = result;
+  const etaitAdmin = membership.role === "admin";
+
   household.members = household.members.filter(
     (m: HouseholdMember) => m.userId.toString() !== session.user.id
   );
+
+  // Succession automatique : voir promouvoirDoyen pour le pourquoi.
+  if (etaitAdmin) {
+    promouvoirDoyen(household.members);
+  }
+
   await household.save();
 
   return NextResponse.json({ ok: true });

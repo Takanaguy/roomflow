@@ -41,7 +41,12 @@ export async function POST(request: Request) {
     );
   }
 
-  household.members.push({ userId: session.user.id, role: "member", joinedAt: new Date() });
+  // Cas rare mais possible : l'admin est parti (promouvoirDoyen n'a rien pu
+  // promouvoir, la liste etait vide) et la colocation n'a plus personne.
+  // Le prochain arrivant devient admin plutot que de laisser la colocation
+  // durablement sans personne pour la gerer.
+  const role = household.members.length === 0 ? "admin" : "member";
+  household.members.push({ userId: session.user.id, role, joinedAt: new Date() });
   await household.save();
 
   return NextResponse.json({ id: household._id.toString(), name: household.name });

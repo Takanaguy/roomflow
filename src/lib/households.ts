@@ -29,6 +29,28 @@ export function isAdminMember(membership: { role: string }) {
   return membership.role === "admin";
 }
 
+/**
+ * Promeut automatiquement le membre present depuis le plus longtemps quand
+ * l'admin quitte la colocation. Sans ca, une colocation dont l'admin part
+ * se retrouverait sans personne pour la gerer (modifier, retirer un membre,
+ * la detruire) - demande explicite de Tanguy le 09/09/2026, comme
+ * alternative plus sure a "forcer l'admin a designer un successeur avant de
+ * pouvoir partir" (qui bloquerait un depart si l'admin n'y a pas pense).
+ *
+ * Mute `members` en place (deja le pattern des autres routes colocation,
+ * qui font `household.members = ...` puis `.save()`) ; ne fait rien si la
+ * liste est vide (la colocation reste alors sans admin - resolu au prochain
+ * `join`, voir join/route.ts).
+ */
+export function promouvoirDoyen(members: HouseholdMember[]): void {
+  if (members.length === 0) return;
+
+  const doyen = members.reduce((plusAncien, m) =>
+    m.joinedAt < plusAncien.joinedAt ? m : plusAncien
+  );
+  doyen.role = "admin";
+}
+
 export type ColocationMembreDetail = {
   userId: string;
   role: "admin" | "member";
