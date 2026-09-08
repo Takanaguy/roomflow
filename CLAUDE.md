@@ -212,7 +212,7 @@ Le projet doit donner l'impression d'un vrai petit produit terminé et soigné, 
 Cocher au fur et à mesure. Découpée en lots testables d'un coup, pas fichier par fichier (décision du 08/09/2026).
 
 - [x] **Lot 1 — Fondations** : Next.js/TS/Tailwind, MongoDB + modèles, NextAuth (Credentials + Google + GitHub), inscription
-- [ ] **Lot 2 — UI auth + layout** : vraie page de connexion/inscription (remplace le gabarit NextAuth), navigation générale, structure des pages protégées (redirection si pas connecté)
+- [x] **Lot 2 — UI auth + layout** : vraie page de connexion/inscription (remplace le gabarit NextAuth), navigation générale, structure des pages protégées (redirection si pas connecté)
 - [ ] **Lot 3 — Colocations** : créer, code d'invitation, rejoindre, liste des membres, quitter (avec vérif dette en cours), retrait d'un membre par l'admin
 - [ ] **Lot 4 — Dépenses** : ajout (répartition égale/personnalisée), modification/suppression, liste avec filtres (catégorie/période/membre), détail d'une dépense
 - [ ] **Lot 5 — Dettes** : calcul des soldes, algorithme de simplification (minimum cash flow), vue "qui doit quoi", marquer un remboursement comme fait
@@ -224,3 +224,12 @@ Cocher au fur et à mesure. Découpée en lots testables d'un coup, pas fichier 
 - [ ] **Lot 11 — Finitions** : responsive, erreurs/chargements, README pro (stack, captures, choix techniques, limites), déploiement Vercel + lien ajouté au portfolio
 
 Chaque lot = plusieurs fichiers construits d'un coup, puis une passe de test groupée (build, lint, et vérification fonctionnelle réelle) avant de committer et passer au suivant.
+
+### Journal du lot 2 (08/09/2026)
+
+- **Découverte importante** : `middleware.js` est **déprécié en Next.js 16**, renommé `proxy.js` (fichier `src/proxy.ts`, export par défaut nommé `proxy` par convention, ici juste `export default auth`). Un `middleware.ts` classique n'aurait pas été détecté. Voir `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`.
+- Protection des pages : `callbacks.authorized` dans `src/auth.ts` (retourne `!!session?.user`) + `matcher` dans `src/proxy.ts`. **Toute nouvelle zone réservée aux connectés doit être ajoutée au matcher**, sinon elle reste publique.
+- `pages.signIn: "/connexion"` dans `auth.ts` : sans ça, la redirection tombe sur le gabarit générique NextAuth (`/api/auth/signin`), pas notre page.
+- Après `signIn()`/`fetch("/api/register")`, utiliser `router.push() + router.refresh()`, jamais `window.location.href` (repéré par le lint) : `refresh()` est nécessaire pour que `useSession()` et les Server Components voient la session fraîchement posée sans recharger toute la page.
+- Design volontairement minimal (Tailwind par défaut, zinc/gris) — décision de Tanguy du 08/09/2026, pas de pass design dédié pour RoomFlow.
+- Testé en conditions réelles : accès direct à `/tableau-de-bord` sans session → redirigé vers `/connexion?callbackUrl=...` (pas le gabarit générique) ; inscription complète par formulaire → connexion auto → atterrissage sur la page protégée avec le bon nom ; en-tête reflète l'état connecté sans rechargement de page. Compte de test nettoyé après coup.

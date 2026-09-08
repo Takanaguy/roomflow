@@ -58,7 +58,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // Google/GitHub, pour rester coherent.
   session: { strategy: "jwt" },
 
+  // Sans ceci, un visiteur non connecte atterrit sur la page de connexion
+  // generique de NextAuth (/api/auth/signin) plutot que sur notre vraie
+  // page, aux couleurs de RoomFlow.
+  pages: { signIn: "/connexion" },
+
   callbacks: {
+    /**
+     * N'est invoque QUE par proxy.ts (la couche middleware), pas par les
+     * appels a auth() ailleurs dans l'app. Retourner false declenche une
+     * redirection automatique vers `pages.signIn` avec l'URL d'origine
+     * conservee en callbackUrl.
+     */
+    authorized({ auth: session }) {
+      return !!session?.user;
+    },
+
     async signIn({ user, account }) {
       if (account?.provider !== "google" && account?.provider !== "github") {
         return true; // Credentials : deja verifie dans authorize()
