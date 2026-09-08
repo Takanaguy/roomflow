@@ -213,7 +213,7 @@ Cocher au fur et à mesure. Découpée en lots testables d'un coup, pas fichier 
 
 - [x] **Lot 1 — Fondations** : Next.js/TS/Tailwind, MongoDB + modèles, NextAuth (Credentials + Google + GitHub), inscription
 - [x] **Lot 2 — UI auth + layout** : vraie page de connexion/inscription (remplace le gabarit NextAuth), navigation générale, structure des pages protégées (redirection si pas connecté)
-- [ ] **Lot 3 — Colocations** : créer, code d'invitation, rejoindre, liste des membres, quitter (avec vérif dette en cours), retrait d'un membre par l'admin
+- [x] **Lot 3 — Colocations** : créer, code d'invitation, rejoindre, liste des membres, quitter (avec vérif dette en cours), retrait d'un membre par l'admin
 - [ ] **Lot 4 — Dépenses** : ajout (répartition égale/personnalisée), modification/suppression, liste avec filtres (catégorie/période/membre), détail d'une dépense
 - [ ] **Lot 5 — Dettes** : calcul des soldes, algorithme de simplification (minimum cash flow), vue "qui doit quoi", marquer un remboursement comme fait
 - [ ] **Lot 6 — Tâches** : CRUD, récurrence, vue Kanban avec drag & drop (dnd-kit), historique
@@ -240,6 +240,14 @@ Chaque lot = plusieurs fichiers construits d'un coup, puis une passe de test gro
 - **Nom affiché modifiable** : `/profil` (protégée, ajoutée au matcher de `proxy.ts`) + `PATCH /api/profil`. Le nom Google d'origine ("L&T gaming") n'était déjà écrasé qu'à la création du compte, jamais aux connexions suivantes — il manquait juste un endroit pour le changer soi-même.
   - Piège rencontré : `useSession().update({ name })` ne suffit pas seul. Il faut aussi gérer `trigger === "update"` dans le callback `jwt` (`auth.ts`) pour que la nouvelle valeur soit réellement écrite dans le jeton signé, sinon le nouveau nom ne persiste que le temps de la page en cours et redisparaît au rechargement suivant. La doc Auth.js prévient explicitement que `session` (la donnée passée par le client à `update()`) doit être revalidée avant d'être utilisée : c'est fait (non vide, trim).
   - Vérifié en conditions réelles, deux niveaux : la base Mongo reflète le nouveau nom juste après le PATCH, ET une navigation fraîche vers une autre page (pas juste un changement d'état React) affiche toujours le nouveau nom, preuve que le cookie de session a bien été réémis.
+
+### Journal du lot 3 (08/09/2026) — Colocations
+
+- `src/lib/households.ts` centralise l'accès + permissions : `getHouseholdForMember` (charge une colocation ET vérifie l'appartenance en un appel — sinon un membre d'une AUTRE colocation pourrait lire/agir dessus juste en devinant son id dans l'URL), `isAdminMember`, `serializeHousehold` (mise en forme partagée par la route API et la page detail, pour ne pas dupliquer la logique deux fois).
+- `hasOutstandingDebt` est un **stub qui renvoie toujours `false`** (documenté en commentaire) : sans dépenses (lot 4), aucune dette n'est possible, donc c'est correct pour l'instant, pas une simplification hasardeuse. Le lot 5 le remplacera par le vrai calcul.
+- `/colocations/[id]` est un **Server Component** qui charge les données côté serveur, avec un petit Client Component (`ColocationClient.tsx`) uniquement pour l'interactivité (copier le code, quitter, retirer un membre) — pas de fetch au montage. Choix motivé par une vraie règle de lint (`react-hooks/set-state-in-effect`, nouvelle règle stricte de ce ESLint) plutôt que contournée : le refactor colle aussi mieux à l'architecture documentée en section 13 (Server Components lisent directement).
+- **Limite connue, non couverte par le cahier des charges** : si l'unique admin d'une colocation la quitte, elle se retrouve sans administrateur (personne ne peut plus retirer de membre ni gérer les invitations). Pas de mécanisme de succession construit — hors scope MVP, à traiter seulement si le besoin se présente.
+- **Testé en conditions réelles**, deux comptes distincts (script curl avec sessions séparées, plus une vérification visuelle dans le navigateur) : création → code généré → un 2ᵉ compte rejoint avec le code → rejoindre deux fois échoue (409) → un non-admin ne peut pas retirer quelqu'un (403) → l'admin retire bien un membre → quitter sans dette réussit directement (pas d'avertissement, cohérent avec le stub) → après avoir quitté, la colocation redevient inaccessible (404), pas de fuite d'information sur son existence. Toutes les données de test nettoyées après coup.
 
 ## 13. Architecture technique (pourquoi pas MVC/OOP classique)
 
