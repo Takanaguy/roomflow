@@ -205,3 +205,22 @@ Le projet doit donner l'impression d'un vrai petit produit terminé et soigné, 
 - **08/09/2026 (suite)** — Google OAuth et GitHub OAuth créés et vérifiés (Client ID confirmé légitime en visitant l'URL d'autorisation réelle : GitHub et Google affichent tous deux "RoomFlow", pas d'erreur `redirect_uri_mismatch`). NextAuth v5 câblé dans `src/auth.ts` : Credentials + Google + GitHub, session JWT (imposé par Credentials), `_id` Mongo propagé dans le token via les callbacks `signIn`/`jwt`/`session`. Route `/api/auth/[...nextauth]`, route d'inscription `/api/register` (validation Zod, hash bcrypt, provider "credentials"). Décision de sécurité : un email déjà utilisé avec un autre provider ne peut pas se connecter en OAuth (`signIn` callback refuse plutôt que de lier silencieusement les comptes).
   - Testé en conditions réelles, pas simulé : inscription → connexion refusée avec mauvais mot de passe (session `null`) → connexion acceptée avec le bon (session avec le bon `_id` Mongo) → clic réel sur "Sign in with Google"/GitHub jusqu'à leurs pages de consentement respectives, qui affichent "RoomFlow". Compte de test nettoyé après vérification.
   - **Prochaine étape** : page de connexion/inscription "à la main" (l'UI par défaut de NextAuth testée ci-dessus n'est qu'un gabarit de secours, pas destinée à rester) + création/rejoint d'une colocation avec code d'invitation (fin de la Semaine 1, section 9).
+- **08/09/2026 (suite)** — Dépôt GitHub public créé et poussé : github.com/Takanaguy/roomflow. Tanguy a testé "Se connecter avec Google" avec son vrai compte, vérifié en base : utilisateur créé correctement (`provider: "google"`). Décisions actées : design minimal/fonctionnel (pas de pass design dédié, Tanguy s'en désintéresse), tests **par lots** plutôt qu'à chaque fichier, blocage de la fusion silencieuse de comptes confirmé (aucun changement de code, déjà en place).
+
+## 12. Feuille de route (source de vérité pour "où on en est")
+
+Cocher au fur et à mesure. Découpée en lots testables d'un coup, pas fichier par fichier (décision du 08/09/2026).
+
+- [x] **Lot 1 — Fondations** : Next.js/TS/Tailwind, MongoDB + modèles, NextAuth (Credentials + Google + GitHub), inscription
+- [ ] **Lot 2 — UI auth + layout** : vraie page de connexion/inscription (remplace le gabarit NextAuth), navigation générale, structure des pages protégées (redirection si pas connecté)
+- [ ] **Lot 3 — Colocations** : créer, code d'invitation, rejoindre, liste des membres, quitter (avec vérif dette en cours), retrait d'un membre par l'admin
+- [ ] **Lot 4 — Dépenses** : ajout (répartition égale/personnalisée), modification/suppression, liste avec filtres (catégorie/période/membre), détail d'une dépense
+- [ ] **Lot 5 — Dettes** : calcul des soldes, algorithme de simplification (minimum cash flow), vue "qui doit quoi", marquer un remboursement comme fait
+- [ ] **Lot 6 — Tâches** : CRUD, récurrence, vue Kanban avec drag & drop (dnd-kit), historique
+- [ ] **Lot 7 — Liste de courses** : ajout/coche/suppression partagés, historique
+- [ ] **Lot 8 — Dashboard** : vue d'ensemble + graphique des dépenses par catégorie (Recharts)
+- [ ] **Lot 9 — Emails** (Resend, compte à créer à ce moment-là) : ajout à une colocation, dépense qui concerne, rappel de tâche
+- [ ] **Lot 10 — Export PDF** : récapitulatif mensuel
+- [ ] **Lot 11 — Finitions** : responsive, erreurs/chargements, README pro (stack, captures, choix techniques, limites), déploiement Vercel + lien ajouté au portfolio
+
+Chaque lot = plusieurs fichiers construits d'un coup, puis une passe de test groupée (build, lint, et vérification fonctionnelle réelle) avant de committer et passer au suivant.
