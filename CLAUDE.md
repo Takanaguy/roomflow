@@ -214,7 +214,7 @@ Cocher au fur et à mesure. Découpée en lots testables d'un coup, pas fichier 
 - [x] **Lot 1 — Fondations** : Next.js/TS/Tailwind, MongoDB + modèles, NextAuth (Credentials + Google + GitHub), inscription
 - [x] **Lot 2 — UI auth + layout** : vraie page de connexion/inscription (remplace le gabarit NextAuth), navigation générale, structure des pages protégées (redirection si pas connecté)
 - [x] **Lot 3 — Colocations** : créer, code d'invitation, rejoindre, liste des membres, quitter (avec vérif dette en cours), retrait d'un membre par l'admin
-- [ ] **Lot 4 — Dépenses** : ajout (répartition égale/personnalisée), modification/suppression, liste avec filtres (catégorie/période/membre), détail d'une dépense
+- [x] **Lot 4 — Dépenses** : ajout (répartition égale/personnalisée), modification/suppression, liste avec filtres (catégorie/période/membre), détail d'une dépense
 - [ ] **Lot 5 — Dettes** : calcul des soldes, algorithme de simplification (minimum cash flow), vue "qui doit quoi", marquer un remboursement comme fait
 - [ ] **Lot 6 — Tâches** : CRUD, récurrence, vue Kanban avec drag & drop (dnd-kit), historique
 - [ ] **Lot 7 — Liste de courses** : ajout/coche/suppression partagés, historique
@@ -258,8 +258,18 @@ Tanguy a proposé deux approches pour la succession d'admin : promotion automati
 - `PATCH /api/colocations/[id]/members/[userId]` (`{ role: "admin" }`) : transfert volontaire. Modèle à **un seul admin à la fois** — transférer, c'est promouvoir la cible ET se rétrograder soi-même, pas ajouter un deuxième admin.
 - `PATCH /api/colocations/[id]` : modifier nom/description, admin uniquement.
 - `DELETE /api/colocations/[id]` : destruction définitive, admin uniquement, confirmée en deux clics côté UI (zone de danger). C'est désormais la **seule** façon de vraiment supprimer une colocation — quitter ne fait que la vider.
-  - ⚠ **TODO lots 4-7** : une fois Expense/Settlement/Task/ShoppingItem en place, ajouter la suppression en cascade de tout ce qui référence ce `householdId` avant de supprimer la colocation, sinon ces documents deviennent orphelins en base pour toujours. Commenté directement dans le code de la route, à ne pas oublier en construisant ces lots.
+  - ~~TODO lots 4-7 : cascade de suppression~~ — **Expense fait, lot 4** (voir journal ci-dessous). Reste Task et ShoppingItem, aux lots 6-7.
 - **Testé en conditions réelles avec trois comptes** (script curl, ordre d'ancienneté A → B → C) : A (admin) part → B (plus ancien restant) promu automatiquement → B transfère volontairement à C → B redevient un simple membre → B ne peut plus modifier le nom (403) → C modifie bien nom/description → B ne peut pas détruire (403) → C (admin, seul admin) part → B (dernier restant) promu automatiquement → B (admin, dernier membre) part → colocation vidée → A la rejoint via le code toujours valide → A devient admin automatiquement → A détruit la colocation → accès impossible ensuite (404). Les 10 scénarios passent. Données de test nettoyées.
+
+### Journal du lot 4 (23/09/2026) — Dépenses
+
+- **`createdBy` ajouté au modèle Expense**, distinct de `payerId`. Le cahier des charges (4.3) permet de saisir une dépense payée par quelqu'un d'autre ("payeur par défaut soi-même") : "auteur" (droit de modifier/supprimer) et "payeur" (qui a sorti l'argent) ne sont donc pas forcément la même personne. Modèle initial du lot 1 ne portait que `payerId` — corrigé avant de construire les routes plutôt qu'après.
+- **`src/lib/expenses.ts`** porte le calcul le plus délicat du lot : répartir un montant sans perdre un centime dans l'arrondi flottant JS (`10.01 / 2` ou un pourcentage ne tombent presque jamais juste en flottant natif). `repartirEgalement` et `repartirParPourcentages` travaillent en **centimes entiers** en interne et distribuent le reste de la division aux premiers de la liste (égale) ou au dernier (pourcentages), pour que la somme colle **toujours** exactement au montant — sinon le calcul de solde du lot 5 accumulerait des écarts au fil des dépenses.
+- Répartition personnalisée : **montants exacts OU pourcentages** (4.3), les deux passent par le même mécanisme anti-arrondi. Les montants exacts saisis à la main sont vérifiés (somme = montant, tolérance 0,005 €) plutôt que recalculés.
+- Permissions : modifier/supprimer réservé à `createdBy` (l'auteur) ou l'admin — **pas** le payeur, qui peut être un tiers. Vérifié explicitement en testant : le payeur seul, qui n'est pas l'auteur, est bien refusé (403).
+- Cross-tenant : `getExpenseInHousehold(householdId, expenseId)` vérifie que la dépense appartient bien à la colocation de l'URL, même logique que `getHouseholdForMember` pour les colocations elles-mêmes.
+- **Cascade de suppression corrigée en le testant** : détruire une colocation ne supprimait pas ses dépenses (le TODO laissé au lot 3). Constaté concrètement (dépense orpheline en base après destruction), corrigé immédiatement dans `DELETE /api/colocations/[id]` plutôt que reporté.
+- **Testé en conditions réelles**, deux comptes : répartition égale 10,01 €/2 personnes → 5,01 + 5,00 (exact) ; répartition 70/30 sur 33,33 € avec payeur ≠ auteur → 23,33 + 10,00 (exact) ; montants personnalisés qui ne tombent pas juste → refusés (400) ; payeur hors colocation → refusé (400) ; liste + filtre par catégorie corrects ; non-auteur/non-admin refusé en modification et suppression (403) ; auteur (même non-payeur) autorisé ; dépense d'une colocation inaccessible via l'id d'une autre (404) ; cascade de suppression vérifiée par un deuxième test ciblé (dépense bien absente de la base après destruction de sa colocation). Données de test nettoyées.
 
 ## 13. Architecture technique (pourquoi pas MVC/OOP classique)
 

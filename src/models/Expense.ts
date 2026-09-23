@@ -16,6 +16,11 @@ const expenseSchema = new Schema(
   {
     householdId: { type: Schema.Types.ObjectId, ref: "Household", required: true },
     payerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    // Distinct de payerId : le cahier des charges (4.3) permet de saisir une
+    // depense payee par quelqu'un d'autre ("payeur par defaut soi-meme").
+    // "auteur" (droit de modifier/supprimer, 4.3) = qui a saisi, pas
+    // forcement qui a paye.
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     amount: { type: Number, required: true, min: 0 },
     description: { type: String, required: true, trim: true },
     category: {

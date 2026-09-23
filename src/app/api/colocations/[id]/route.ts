@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { getHouseholdForMember, isAdminMember, serializeHousehold } from "@/lib/households";
 import HouseholdModel from "@/models/Household";
+import ExpenseModel from "@/models/Expense";
 
 const editSchema = z.object({
   name: z.string().trim().min(1, "Le nom est requis").max(80).optional(),
@@ -79,11 +80,10 @@ export async function PATCH(
  * ne fait que la vider (voir promouvoirDoyen / join pour ce qui se passe
  * quand elle se vide toute seule).
  *
- * ⚠ TODO lots 4-7 : une fois Expense/Settlement/Task/ShoppingItem en place,
- * supprimer ici tout ce qui reference ce householdId avant de supprimer la
- * colocation elle-meme, sinon ces documents deviennent orphelins (aucune
- * colocation ne les referencera plus, mais ils resteront en base pour
- * toujours).
+ * Cascade sur Expense depuis le lot 4 (constate en testant : une colocation
+ * detruite laissait ses depenses orphelines en base, sans plus aucune
+ * colocation pour les referencer). ⚠ TODO lots 6-7 : ajouter Task et
+ * ShoppingItem ici des qu'ils existent, meme raison.
  */
 export async function DELETE(
   _req: Request,
@@ -107,6 +107,7 @@ export async function DELETE(
     );
   }
 
+  await ExpenseModel.deleteMany({ householdId: id });
   await HouseholdModel.findByIdAndDelete(id);
   return NextResponse.json({ ok: true });
 }
