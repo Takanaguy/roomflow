@@ -221,7 +221,7 @@ Cocher au fur et à mesure. Découpée en lots testables d'un coup, pas fichier 
 - [ ] **Lot 8 — Dashboard** : vue d'ensemble + graphique des dépenses par catégorie (Recharts)
 - [ ] **Lot 9 — Emails** (Resend, compte à créer à ce moment-là) : ajout à une colocation, dépense qui concerne, rappel de tâche, **mot de passe oublié** (demandé par Tanguy le 08/09/2026 — regroupé ici plutôt que fait à part, car ça dépend de Resend pour l'envoi du lien de réinitialisation ; le faire avant aurait voulu dire soit attendre, soit bricoler un envoi factice puis tout refaire)
 - [ ] **Lot 10 — Export PDF** : récapitulatif mensuel
-- [ ] **Lot 11 — Finitions** : responsive, erreurs/chargements, README pro (stack, captures, choix techniques, limites), déploiement Vercel + lien ajouté au portfolio, **Swagger/OpenAPI en option si le temps le permet** (décidé le 09/09/2026 — pas prioritaire, l'API n'a qu'un seul consommateur)
+- [ ] **Lot 11 — Finitions** : responsive, erreurs/chargements, README pro (stack, captures, choix techniques, limites), déploiement Vercel + lien ajouté au portfolio, Swagger/OpenAPI en option si le temps le permet, **panneau admin** (décidé le 23/09/2026 — voir section 15)
 
 Chaque lot = plusieurs fichiers construits d'un coup, puis une passe de test groupée (build, lint, et vérification fonctionnelle réelle) avant de committer et passer au suivant.
 
@@ -286,3 +286,18 @@ src/components/   UI reutilisable, Client Components la ou il faut de l'interact
 - **Pas de Doxygen** : mauvais outil, pensé pour C/C++/Java, pas pour TypeScript. L'équivalent de l'écosystème JS/TS s'appelle TypeDoc.
 - **Pas de TypeDoc ni de doc générée non plus** : ce genre d'outil a du sens pour une bibliothèque consommée par d'autres développeurs. RoomFlow est une application, pas une lib — personne ne naviguera un site de doc généré. Le temps va plutôt dans de bons commentaires "pourquoi" et un README soigné (lot 11).
 - **Swagger/OpenAPI : pas prioritaire.** L'API RoomFlow n'a qu'un seul consommateur (son propre frontend) — la valeur pratique d'une doc API interactive est faible ici. Argument portfolio réel cela dit (montre une API bien structurée) : à envisager en option au **lot 11**, si le temps restant le permet, jamais comme prérequis bloquant le cœur du projet.
+
+## 15. Panneau admin + nettoyage automatique (décidé le 23/09/2026)
+
+Idée de Tanguy, absente du cahier des charges d'origine : repérer les colocations vides ou inactives pour libérer de l'espace, avec deux angles — un panneau pour les voir/détruire à la main, et un mécanisme automatique.
+
+**Placé au lot 11**, confirmé par Tanguy, pour deux raisons concrètes :
+- Le panneau lui-même n'a pas de dépendance technique, mais l'auto-nettoyage en a deux : Resend (lot 9, pour l'envoi des emails) et une vraie notion d'activité (Expense/Task/ShoppingItem, lots 4/6/7 — sans eux, "inactif" ne veut encore rien dire).
+- Les deux volets sont liés (le panneau sert aussi à vérifier/déclencher le nettoyage à la main) : les faire ensemble plutôt qu'en deux morceaux dispersés.
+
+**Règles confirmées par Tanguy :**
+- Colocation **vide** (0 membre) → email automatique au **dernier admin** avant qu'elle se vide. Déclenché par **événement** (au moment précis où `/leave` la vide), pas par un scan périodique — capturer qui vient de partir à cet instant est plus simple et plus fiable que de le retrouver après coup.
+- Colocation **inactive** (a des membres, mais rien ne s'y passe depuis un moment) → email à **tous les membres**. Celui-là a besoin d'un vrai job périodique (Vercel Cron Jobs, gratuit sur ce plan) qui scanne les colocations et compare la dernière activité (dépense/tâche/course la plus récente) à un seuil à définir.
+- Le panneau admin lui-même : accès à Tanguy uniquement (opérateur unique de l'app pour l'instant). Prévu via une variable d'environnement (`SITE_ADMIN_EMAILS`) plutôt qu'un vrai système de rôles dans `User` — plus simple, cohérent avec "on définira les permissions plus tard" (section 3).
+
+**À construire au lot 11** : le panneau (liste de toutes les colocations, taille, dernière activité, bouton détruire), le déclencheur d'email sur colocation vidée, et le Cron Job d'inactivité + son email.
