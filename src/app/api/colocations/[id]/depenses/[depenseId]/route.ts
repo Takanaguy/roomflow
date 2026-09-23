@@ -1,32 +1,31 @@
 import { NextResponse } from "next/server";
-import { Types } from "mongoose";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { getHouseholdForMember, isAdminMember } from "@/lib/households";
 import {
+  construireRepartitionInput,
   getExpenseInHousehold,
-  repartirEgalement,
-  repartirParPourcentages,
-  sommeSplits,
+  resoudreRepartition,
   serializeExpenses,
-  type Split,
 } from "@/lib/expenses";
 import type { HouseholdMember } from "@/models/Household";
 
 const CATEGORIES = ["courses", "factures", "loyer", "sorties", "autre"] as const;
+const partSchema = z.object({ userId: z.string(), amount: z.number().nonnegative() });
+const pourcentageSchema = z.object({ userId: z.string(), pourcentage: z.number().positive() });
 
 const editSchema = z.object({
   amount: z.number().positive(),
   description: z.string().trim().min(1, "Description requise").max(200),
   category: z.enum(CATEGORIES),
   date: z.string().datetime().optional(),
-  payerId: z.string().optional(),
+  payerMemberIds: z.array(z.string()).min(1).optional(),
+  payerSplits: z.array(partSchema).optional(),
+  payerPourcentages: z.array(pourcentageSchema).optional(),
   splitType: z.enum(["equal", "custom"]),
   memberIds: z.array(z.string()).min(1).optional(),
-  splits: z.array(z.object({ userId: z.string(), amount: z.number().nonnegative() })).optional(),
-  pourcentages: z
-    .array(z.object({ userId: z.string(), pourcentage: z.number().positive() }))
-    .optional(),
+  splits: z.array(partSchema).optional(),
+  pourcentages: z.array(pourcentageSchema).optional(),
 });
 
 /** Charge la depense + verifie appartenance colocation/permission, partage par PATCH/DELETE. */
@@ -111,86 +110,46 @@ export async function PATCH(
   const estMembre = (userId: string) =>
     household.members.some((m: HouseholdMember) => m.userId.toString() === userId);
 
-  const payerId = data.payerId ?? acces.expense.payerId.toString();
-  if (!estMembre(payerId)) {
-    return NextResponse.json(
-      { error: "Le payeur doit faire partie de la colocation" },
-      { status: 400 }
-    );
+  const payeursInput = construireRepartitionInput({
+    memberIds: data.payerMemberIds,
+    splits: data.payerSplits,
+    pourcentages: data.payerPourcentages,
+  });
+  if (!payeursInput) {
+    return NextResponse.json({ error: "Payeur manquant" }, { status: 400 });
+  }
+  const payeursResultat = resoudreRepartition(data.amount, payeursInput, estMembre);
+  if (!payeursResultat.ok) {
+    return NextResponse.json({ error: payeursResultat.erreur }, { status: 400 });
   }
 
-  let splits: Split[];
-
-  if (data.splitType === "equal") {
-    if (!data.memberIds || data.memberIds.length === 0) {
-      return NextResponse.json(
-        { error: "Sélectionne au moins un participant" },
-        { status: 400 }
-      );
-    }
-    if (!data.memberIds.every(estMembre)) {
-      return NextResponse.json(
-        { error: "Un participant sélectionné ne fait pas partie de la colocation" },
-        { status: 400 }
-      );
-    }
-    splits = repartirEgalement(data.amount, data.memberIds);
-  } else if (data.pourcentages && data.pourcentages.length > 0) {
-    if (!data.pourcentages.every((p) => estMembre(p.userId))) {
-      return NextResponse.json(
-        { error: "Un participant sélectionné ne fait pas partie de la colocation" },
-        { status: 400 }
-      );
-    }
-    const total = data.pourcentages.reduce((s, p) => s + p.pourcentage, 0);
-    if (Math.abs(total - 100) > 0.01) {
-      return NextResponse.json(
-        { error: `Les pourcentages doivent totaliser 100 (actuellement ${total})` },
-        { status: 400 }
-      );
-    }
-    splits = repartirParPourcentages(data.amount, data.pourcentages);
-  } else if (data.splits && data.splits.length > 0) {
-    if (!data.splits.every((s) => estMembre(s.userId))) {
-      return NextResponse.json(
-        { error: "Un participant sélectionné ne fait pas partie de la colocation" },
-        { status: 400 }
-      );
-    }
-    const somme = sommeSplits(data.splits);
-    if (Math.abs(somme - data.amount) > 0.005) {
-      return NextResponse.json(
-        {
-          error: `La somme des parts (${somme.toFixed(2)} €) ne correspond pas au montant (${data.amount.toFixed(2)} €)`,
-        },
-        { status: 400 }
-      );
-    }
-    splits = data.splits;
-  } else {
-    return NextResponse.json(
-      { error: "Répartition personnalisée manquante" },
-      { status: 400 }
-    );
+  const owingInput = construireRepartitionInput({
+    memberIds: data.memberIds,
+    splits: data.splits,
+    pourcentages: data.pourcentages,
+  });
+  if (!owingInput) {
+    return NextResponse.json({ error: "Répartition manquante" }, { status: 400 });
+  }
+  const owingResultat = resoudreRepartition(data.amount, owingInput, estMembre);
+  if (!owingResultat.ok) {
+    return NextResponse.json({ error: owingResultat.erreur }, { status: 400 });
   }
 
   const { expense } = acces;
-  // new Types.ObjectId(...) plutot qu'assigner la string brute : le champ
-  // est bien type ObjectId cote Mongoose, une string n'est pas assignable
-  // telle quelle en TypeScript meme si Mongoose la caste sans probleme a
-  // l'execution.
-  expense.payerId = new Types.ObjectId(payerId);
   expense.amount = data.amount;
   expense.description = data.description;
   expense.category = data.category;
   if (data.date) expense.date = new Date(data.date);
   expense.splitType = data.splitType;
-  // splits est un tableau de sous-documents Mongoose (DocumentArray), pas
-  // de simples objets : Mongoose accepte un tableau brut en remplacement et
-  // le convertit lui-meme, mais TypeScript n'a pas de type public pour "un
-  // tableau assignable a ce DocumentArray" - c'est un frottement connu
-  // TypeScript/Mongoose, pas une erreur qu'un autre typage eviterait ici.
-  expense.splits = splits as unknown as typeof expense.splits;
+  // payers/splits sont des tableaux de sous-documents Mongoose
+  // (DocumentArray), pas de simples objets : Mongoose accepte un tableau
+  // brut en remplacement et le convertit lui-meme, mais TypeScript n'a pas
+  // de type public pour "un tableau assignable a ce DocumentArray" - c'est
+  // un frottement connu TypeScript/Mongoose, pas une erreur qu'un autre
+  // typage eviterait ici.
+  expense.payers = payeursResultat.parts as unknown as typeof expense.payers;
+  expense.splits = owingResultat.parts as unknown as typeof expense.splits;
   await expense.save();
 
   const [serialized] = await serializeExpenses(

@@ -101,8 +101,10 @@ export default async function DepensesPage({
                 <div>
                   <p className="font-medium">{d.description}</p>
                   <p className="text-xs text-zinc-500">
-                    {d.payeur.name} ·{" "}
-                    {new Date(d.date).toLocaleDateString("fr-FR")} ·{" "}
+                    {d.payeurs.length === 1
+                      ? d.payeurs[0].name
+                      : `${d.payeurs.length} payeurs`}{" "}
+                    · {new Date(d.date).toLocaleDateString("fr-FR")} ·{" "}
                     {CATEGORIES.find((c) => c.value === d.category)?.label ?? d.category}
                   </p>
                 </div>

@@ -52,14 +52,24 @@ export default async function DepenseDetailPage({
         <span className="font-mono text-xl">{detail.amount.toFixed(2)} €</span>
       </div>
 
-      <div className="mt-6 flex flex-col gap-1 text-sm text-zinc-600">
-        <p>
-          Payé par <span className="font-medium text-zinc-900">{detail.payeur.name}</span>
-        </p>
-        <p>
-          Ajouté par <span className="font-medium text-zinc-900">{detail.creePar.name}</span>
-        </p>
-      </div>
+      <p className="mt-6 text-sm text-zinc-600">
+        Ajouté par <span className="font-medium text-zinc-900">{detail.creePar.name}</span>
+      </p>
+
+      <h2 className="mt-6 text-sm font-medium text-zinc-500">
+        {detail.payeurs.length === 1 ? "Payé par" : "Payé par (plusieurs personnes)"}
+      </h2>
+      <ul className="mt-2 flex flex-col gap-1">
+        {detail.payeurs.map((p) => (
+          <li
+            key={p.userId}
+            className="flex items-center justify-between rounded-md px-3 py-2 hover:bg-zinc-50"
+          >
+            <span>{p.name}</span>
+            <span className="font-mono text-sm">{p.amount.toFixed(2)} €</span>
+          </li>
+        ))}
+      </ul>
 
       <h2 className="mt-8 text-sm font-medium text-zinc-500">
         Qui doit quoi ({detail.splitType === "equal" ? "part égale" : "personnalisée"})
@@ -72,9 +82,9 @@ export default async function DepenseDetailPage({
           >
             <span>
               {s.name}
-              {s.userId === detail.payeur.userId && (
+              {detail.payeurs.some((p) => p.userId === s.userId) && (
                 <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">
-                  payeur
+                  a payé
                 </span>
               )}
             </span>

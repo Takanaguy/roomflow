@@ -65,6 +65,98 @@ export function sommeSplits(splits: { amount: number }[]): number {
   return centimes / 100;
 }
 
+export type RepartitionInput =
+  | { type: "equal"; memberIds: string[] }
+  | { type: "amounts"; splits: Split[] }
+  | { type: "percentages"; pourcentages: { userId: string; pourcentage: number }[] };
+
+export type ResultatRepartition =
+  | { ok: true; parts: Split[] }
+  | { ok: false; erreur: string };
+
+/**
+ * Valide + calcule une repartition, dans un sens comme dans l'autre : qui
+ * DOIT quoi (splits) et qui a PAYE quoi (payers) sont structurellement le
+ * meme probleme - distribuer un montant entre des personnes en garantissant
+ * la somme exacte. Centralise ici pour ne pas dupliquer 4 fois la meme
+ * logique (POST/PATCH x payers/splits). Demande de Tanguy le 23/09/2026,
+ * qui a fait remarquer qu'un resto peut etre avance par plusieurs personnes
+ * a la fois, pas toujours une seule.
+ */
+export function resoudreRepartition(
+  montantEuros: number,
+  input: RepartitionInput,
+  estMembre: (userId: string) => boolean
+): ResultatRepartition {
+  if (input.type === "equal") {
+    if (input.memberIds.length === 0) {
+      return { ok: false, erreur: "Sélectionne au moins un participant" };
+    }
+    if (!input.memberIds.every(estMembre)) {
+      return { ok: false, erreur: "Un participant sélectionné ne fait pas partie de la colocation" };
+    }
+    return { ok: true, parts: repartirEgalement(montantEuros, input.memberIds) };
+  }
+
+  if (input.type === "percentages") {
+    if (input.pourcentages.length === 0) {
+      return { ok: false, erreur: "Répartition personnalisée manquante" };
+    }
+    if (!input.pourcentages.every((p) => estMembre(p.userId))) {
+      return { ok: false, erreur: "Un participant sélectionné ne fait pas partie de la colocation" };
+    }
+    const total = input.pourcentages.reduce((s, p) => s + p.pourcentage, 0);
+    if (Math.abs(total - 100) > 0.01) {
+      return { ok: false, erreur: `Les pourcentages doivent totaliser 100 (actuellement ${total})` };
+    }
+    return { ok: true, parts: repartirParPourcentages(montantEuros, input.pourcentages) };
+  }
+
+  if (input.splits.length === 0) {
+    return { ok: false, erreur: "Répartition personnalisée manquante" };
+  }
+  if (!input.splits.every((s) => estMembre(s.userId))) {
+    return { ok: false, erreur: "Un participant sélectionné ne fait pas partie de la colocation" };
+  }
+  const somme = sommeSplits(input.splits);
+  if (Math.abs(somme - montantEuros) > 0.005) {
+    return {
+      ok: false,
+      erreur: `La somme des parts (${somme.toFixed(2)} €) ne correspond pas au montant (${montantEuros.toFixed(2)} €)`,
+    };
+  }
+  return { ok: true, parts: input.splits };
+}
+
+export type RepartitionBody = {
+  memberIds?: string[];
+  splits?: Split[];
+  pourcentages?: { userId: string; pourcentage: number }[];
+};
+
+/**
+ * Traduit le corps de requete (POST/PATCH) en RepartitionInput. Utilisee
+ * deux fois par requete - une pour les payeurs, une pour les participants -
+ * avec les memes trois champs optionnels sous des noms differents (prefixes
+ * "payer" cote client pour les payeurs). L'ordre de priorite (pourcentages
+ * > montants > liste simple) est arbitraire mais doit rester le meme des
+ * deux cotes.
+ */
+export function construireRepartitionInput(
+  body: RepartitionBody
+): RepartitionInput | null {
+  if (body.pourcentages && body.pourcentages.length > 0) {
+    return { type: "percentages", pourcentages: body.pourcentages };
+  }
+  if (body.splits && body.splits.length > 0) {
+    return { type: "amounts", splits: body.splits };
+  }
+  if (body.memberIds && body.memberIds.length > 0) {
+    return { type: "equal", memberIds: body.memberIds };
+  }
+  return null;
+}
+
 /**
  * Charge une depense ET verifie qu'elle appartient bien a householdId -
  * meme logique que getHouseholdForMember : sans ca, quelqu'un pourrait
@@ -85,7 +177,7 @@ export type DepenseDetail = {
   category: string;
   date: string;
   splitType: "equal" | "custom";
-  payeur: { userId: string; name: string };
+  payeurs: (Split & { name: string })[];
   creePar: { userId: string; name: string };
   splits: (Split & { name: string })[];
   peuxModifier: boolean;
@@ -106,7 +198,7 @@ export async function serializeExpenses(
 
   const idsUtilisateurs = new Set<string>();
   for (const e of expenses) {
-    idsUtilisateurs.add(e.payerId.toString());
+    for (const p of e.payers) idsUtilisateurs.add(p.userId.toString());
     idsUtilisateurs.add(e.createdBy.toString());
     for (const s of e.splits) idsUtilisateurs.add(s.userId.toString());
   }
@@ -122,7 +214,11 @@ export async function serializeExpenses(
     category: e.category,
     date: e.date.toISOString(),
     splitType: e.splitType as "equal" | "custom",
-    payeur: { userId: e.payerId.toString(), name: nom(e.payerId.toString()) },
+    payeurs: e.payers.map((p) => ({
+      userId: p.userId.toString(),
+      amount: p.amount,
+      name: nom(p.userId.toString()),
+    })),
     creePar: { userId: e.createdBy.toString(), name: nom(e.createdBy.toString()) },
     splits: e.splits.map((s) => ({
       userId: s.userId.toString(),
