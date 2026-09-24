@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
-import {
-  getHouseholdForMember,
-  hasOutstandingDebt,
-  promouvoirDoyen,
-} from "@/lib/households";
+import { getHouseholdForMember, promouvoirDoyen } from "@/lib/households";
+import { aUneDetteEnCours } from "@/lib/settlements";
 import type { HouseholdMember } from "@/models/Household";
 
 const bodySchema = z.object({ force: z.boolean().optional() });
@@ -32,7 +29,7 @@ export async function POST(
   // pas bloquer definitivement. force=true (apres confirmation cote client)
   // outrepasse l'avertissement.
   if (!force) {
-    const dette = await hasOutstandingDebt(id, session.user.id);
+    const dette = await aUneDetteEnCours(id, session.user.id);
     if (dette) {
       return NextResponse.json(
         {

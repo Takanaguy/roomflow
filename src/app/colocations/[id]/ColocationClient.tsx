@@ -185,12 +185,20 @@ export default function ColocationClient({ initial }: { initial: ColocationDetai
         )}
       </div>
 
-      <Link
-        href={`/colocations/${detail.id}/depenses`}
-        className="mt-6 block rounded-md border border-zinc-200 px-4 py-3 text-sm font-medium hover:bg-zinc-50"
-      >
-        Voir les dépenses →
-      </Link>
+      <div className="mt-6 grid grid-cols-2 gap-3">
+        <Link
+          href={`/colocations/${detail.id}/depenses`}
+          className="block rounded-md border border-zinc-200 px-4 py-3 text-sm font-medium hover:bg-zinc-50"
+        >
+          Voir les dépenses →
+        </Link>
+        <Link
+          href={`/colocations/${detail.id}/dettes`}
+          className="block rounded-md border border-zinc-200 px-4 py-3 text-sm font-medium hover:bg-zinc-50"
+        >
+          Qui doit quoi →
+        </Link>
+      </div>
 
       <div className="mt-3 flex items-center gap-2 rounded-md border border-zinc-200 px-4 py-3">
         <span className="text-sm text-zinc-500">Code d&apos;invitation</span>

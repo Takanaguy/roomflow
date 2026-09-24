@@ -105,15 +105,3 @@ export async function serializeHousehold(
     }),
   };
 }
-
-/**
- * Le lot 5 remplacera ce stub par le vrai calcul de solde (section 4.4).
- * Sans depenses (lot 4 pas encore construit), aucune dette n'est possible :
- * renvoyer false est donc correct ici, pas une simplification hasardeuse.
- */
-export async function hasOutstandingDebt(
-  _householdId: string,
-  _userId: string
-): Promise<boolean> {
-  return false;
-}
