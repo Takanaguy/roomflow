@@ -11,7 +11,7 @@ export type DetteSimplifiee = {
   amount: number;
 };
 
-type DetteCentimes = { fromUserId: string; toUserId: string; centimes: number };
+export type DetteCentimes = { fromUserId: string; toUserId: string; centimes: number };
 
 /**
  * Solde net de chaque membre en centimes : ce qu'il a paye moins ce qu'il
@@ -53,7 +53,7 @@ async function calculerSoldesNets(householdId: string): Promise<Map<string, numb
  * une methode gloutonne O(n^2) est largement suffisante - pas besoin d'un
  * tas binaire pour ce volume.
  */
-function simplifier(soldesCentimes: Map<string, number>): DetteCentimes[] {
+export function simplifier(soldesCentimes: Map<string, number>): DetteCentimes[] {
   const soldes = [...soldesCentimes.entries()]
     .filter(([, c]) => Math.abs(c) >= 1) // ignore les ecarts sous le centime
     .map(([userId, centimes]) => ({ userId, centimes }));
