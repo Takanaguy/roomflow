@@ -4,6 +4,8 @@ import { auth } from "@/auth";
 import { getHouseholdForMember, isAdminMember, serializeHousehold } from "@/lib/households";
 import HouseholdModel from "@/models/Household";
 import ExpenseModel from "@/models/Expense";
+import SettlementModel from "@/models/Settlement";
+import TaskModel from "@/models/Task";
 
 const editSchema = z.object({
   name: z.string().trim().min(1, "Le nom est requis").max(80).optional(),
@@ -82,8 +84,9 @@ export async function PATCH(
  *
  * Cascade sur Expense depuis le lot 4 (constate en testant : une colocation
  * detruite laissait ses depenses orphelines en base, sans plus aucune
- * colocation pour les referencer). ⚠ TODO lots 6-7 : ajouter Task et
- * ShoppingItem ici des qu'ils existent, meme raison.
+ * colocation pour les referencer). Task (lot 6) et Settlement (oubli du
+ * lot 5) suivent la meme logique. ⚠ TODO lot 7 : ajouter ShoppingItem ici
+ * des qu'il est utilise, meme raison.
  */
 export async function DELETE(
   _req: Request,
@@ -108,6 +111,8 @@ export async function DELETE(
   }
 
   await ExpenseModel.deleteMany({ householdId: id });
+  await SettlementModel.deleteMany({ householdId: id });
+  await TaskModel.deleteMany({ householdId: id });
   await HouseholdModel.findByIdAndDelete(id);
   return NextResponse.json({ ok: true });
 }

@@ -4,6 +4,7 @@ import HouseholdModel, {
 } from "@/models/Household";
 import UserModel from "@/models/User";
 import { connectDB } from "@/lib/mongodb";
+import { estObjectIdValide } from "@/lib/ids";
 import type { HydratedDocument } from "mongoose";
 
 /**
@@ -13,6 +14,9 @@ import type { HydratedDocument } from "mongoose";
  * devinant son id dans l'URL.
  */
 export async function getHouseholdForMember(householdId: string, userId: string) {
+  // Un id mal forme dans l'URL donnerait une CastError (500) : on repond
+  // comme pour une colocation inconnue, donc 404 cote appelant.
+  if (!estObjectIdValide(householdId)) return null;
   await connectDB();
   const household = await HouseholdModel.findById(householdId);
   if (!household) return null;

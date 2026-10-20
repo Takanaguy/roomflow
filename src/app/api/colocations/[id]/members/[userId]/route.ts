@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getHouseholdForMember, isAdminMember } from "@/lib/households";
+import { retirerMembreDesTaches } from "@/lib/tasks";
 import type { HouseholdMember } from "@/models/Household";
 
 /** Retrait d'un membre par l'admin (section 4.2). */
@@ -46,6 +47,8 @@ export async function DELETE(
   }
 
   await household.save();
+  // Apres la sauvegarde seulement (meme raison que dans /leave).
+  await retirerMembreDesTaches(id, cibleId);
   return NextResponse.json({ ok: true });
 }
 

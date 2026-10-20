@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { getHouseholdForMember, promouvoirDoyen } from "@/lib/households";
 import { aUneDetteEnCours } from "@/lib/settlements";
+import { retirerMembreDesTaches } from "@/lib/tasks";
 import type { HouseholdMember } from "@/models/Household";
 
 const bodySchema = z.object({ force: z.boolean().optional() });
@@ -54,6 +55,9 @@ export async function POST(
   }
 
   await household.save();
+  // Apres la sauvegarde seulement : si elle echoue, la personne reste membre
+  // et doit garder ses taches. Sinon on laisserait des assignes fantomes.
+  await retirerMembreDesTaches(id, session.user.id);
 
   return NextResponse.json({ ok: true });
 }

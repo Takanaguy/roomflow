@@ -18,8 +18,23 @@ const taskSchema = new Schema(
       required: true,
       default: "none",
     },
+    // Meme raison que Expense.createdBy : le droit de modifier/supprimer
+    // une tache appartient a son createur (ou a l'admin), pas aux assignes,
+    // qui n'ont que le droit de changer le statut.
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    // Rotation optionnelle, activee tache par tache. N'a de sens que si
+    // recurrence != "none" : la rotation joue a la creation de l'occurrence
+    // suivante.
+    rotation: { type: Boolean, default: false },
     dueDate: { type: Date },
     completedAt: { type: Date },
+    // Qui a marque la tache faite (historique, section 4.5). Peut differer
+    // des assignes : l'admin ou un coloc peut la terminer a leur place.
+    completedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    // Verrou anti-doublon : une tache repassee de "fait" a "a faire" puis de
+    // nouveau a "fait" ne doit pas fabriquer une 2e occurrence suivante. Reste
+    // a true meme si la tache sort de "fait".
+    occurrenceGeneree: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );
