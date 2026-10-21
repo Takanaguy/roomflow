@@ -324,6 +324,15 @@ Décisions validées avec Tanguy avant de coder : tout membre ajoute et coche ; 
 - **Testé en conditions réelles** (script multi-comptes : 45 vérifications sur 45, plus 407 tests Vitest) : validations (400), suppression auteur/admin (403 sinon), coche idempotente et concurrente, base (champs bien effacés au décochage), cross-tenant et ids invalides (404), règle des 7 jours (achat à 10 jours absent de la liste mais présent dans l'historique), pages d'historique hors limites, départ d'un membre, cascade. Vérifié aussi dans le navigateur : groupement par rayon, ajout, coche, et mise à jour automatique (article ajouté par un autre compte apparu seul en environ 14 s). Données de démo : 8 articles dans "Colocation Test".
 - **Dette connue** : pas de test automatique des fonctions qui touchent la base (couvertes par le script) ; un article décoché depuis "Achetés" passe brièvement en fin de son groupe avant de retrouver sa place au rafraîchissement.
 
+### Journal, détail des remboursements par dépense (21/10/2026, demande de Tanguy)
+
+Tanguy a demandé, en regardant sa dépense "Repas" (100 €, avancée 40 € par Test 1 et 60 € par Test 2), que la page de la dépense dise combien le troisième doit rembourser à chacun. Décidé avec lui : affichage sur la page de la dépense seulement (pas dans la liste), et pas de prix sur la liste de courses (le cahier des charges 4.6 n'en prévoit pas, les montants vivent dans les Dépenses).
+
+- **`remboursementsDepense(payers, splits)`** (`src/lib/settlements.ts`) : fonction pure. Solde net de chaque personne sur CETTE dépense (payé moins part, en centimes), puis réutilisation de `simplifier` (le même minimum cash flow que la page "Qui doit quoi"), donc aucun second algorithme à maintenir. Sur l'exemple : Test 3 rembourse 6,66 € à Test 1 et 26,67 € à Test 2.
+- **Page de la dépense** : section "Qui rembourse qui" avec le vocabulaire de la page des dettes ("Tu dois X à A", "B te doit X", "C doit X à D"), une phrase qui rappelle que c'est pour cette dépense seulement et un lien vers "Qui doit quoi", qui additionne toutes les dépenses et reste la référence pour payer.
+- **Testé** : 49 tests Vitest (cas de Tanguy aux centimes exacts, payeur qui ne participe pas, personne qui paie ET doit, pièges flottants, 100 jeux pseudo-aléatoires à graine fixe : les soldes retombent tous à 0). Total 456 tests. Vérifié dans le navigateur sur la dépense "Repas" de la colocation de démo.
+- **Limite connue** : c'est une information, pas un suivi : on ne coche pas un remboursement par dépense. Les remboursements confirmés restent ceux de la page "Qui doit quoi" (tout ou rien, par le créditeur).
+
 ## 13. Architecture technique (pourquoi pas MVC/OOP classique)
 
 Question de Tanguy le 08/09/2026. Décision : **pas de MVC explicite avec des classes Controller**, ni d'archi orientée objet côté domaine (les modèles Mongoose ne sont pas manipulés comme des objets métier riches, juste des schémas + requêtes). Structure retenue, 4 couches :

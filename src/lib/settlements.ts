@@ -79,6 +79,32 @@ export function simplifier(soldesCentimes: Map<string, number>): DetteCentimes[]
   return resultat;
 }
 
+/**
+ * Qui rembourse qui pour UNE SEULE depense (page de detail). Solde net de
+ * chaque personne = ce qu'elle a paye moins sa part, en centimes entiers
+ * (meme raison que calculerSoldesNets : pas de derive de flottants). Une
+ * meme personne peut etre payeur ET participant, ou n'apparaitre que d'un
+ * cote. On reutilise simplifier() tel quel, pas de second algorithme. Pure :
+ * aucun acces base, les noms sont resolus par l'appelant.
+ */
+export function remboursementsDepense(
+  payers: { userId: string; amount: number }[],
+  splits: { userId: string; amount: number }[]
+): { fromUserId: string; toUserId: string; amount: number }[] {
+  const soldes = new Map<string, number>();
+  const ajouter = (userId: string, centimes: number) =>
+    soldes.set(userId, (soldes.get(userId) ?? 0) + centimes);
+
+  for (const p of payers) ajouter(p.userId, Math.round(p.amount * 100));
+  for (const s of splits) ajouter(s.userId, -Math.round(s.amount * 100));
+
+  return simplifier(soldes).map((d) => ({
+    fromUserId: d.fromUserId,
+    toUserId: d.toUserId,
+    amount: d.centimes / 100,
+  }));
+}
+
 /** Vue "qui doit quoi" prete a afficher, avec les noms resolus. */
 export async function calculerDettesSimplifiees(householdId: string): Promise<DetteSimplifiee[]> {
   const soldes = await calculerSoldesNets(householdId);
