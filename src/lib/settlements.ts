@@ -21,7 +21,7 @@ export type DetteCentimes = { fromUserId: string; toUserId: string; centimes: nu
  * (repartirEgalement etc.) : eviter que l'algorithme de simplification
  * derive avec les flottants au fil de dizaines de depenses.
  */
-async function calculerSoldesNets(householdId: string): Promise<Map<string, number>> {
+export async function calculerSoldesNets(householdId: string): Promise<Map<string, number>> {
   await connectDB();
   const [expenses, settlements] = await Promise.all([
     ExpenseModel.find({ householdId }),

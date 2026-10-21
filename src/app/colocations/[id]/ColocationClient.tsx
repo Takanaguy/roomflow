@@ -12,7 +12,18 @@ import type { ColocationDetail } from "@/lib/households";
  * de clic, pas d'un effect - ce n'est plus le meme cas de figure pour le
  * linter.
  */
-export default function ColocationClient({ initial }: { initial: ColocationDetail }) {
+export default function ColocationClient({
+  initial,
+  apercu,
+}: {
+  initial: ColocationDetail;
+  /**
+   * Aperçu (dashboard) rendu cote serveur par la page puis passe ici comme
+   * noeud : un Server Component peut etre l'enfant d'un Client Component, a
+   * condition d'arriver en prop et non d'etre importe ici.
+   */
+  apercu?: React.ReactNode;
+}) {
   const router = useRouter();
   const [detail, setDetail] = useState<ColocationDetail>(initial);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -31,6 +42,9 @@ export default function ColocationClient({ initial }: { initial: ColocationDetai
   async function recharger() {
     const res = await fetch(`/api/colocations/${detail.id}`);
     if (res.ok) setDetail(await res.json());
+    // Le dashboard (prop `apercu`) est calcule par le serveur : sans ce
+    // rafraichissement, un membre retire resterait affiche dans les soldes.
+    router.refresh();
   }
 
   async function copierCode() {
@@ -184,6 +198,8 @@ export default function ColocationClient({ initial }: { initial: ColocationDetai
           </button>
         )}
       </div>
+
+      {apercu}
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Link
