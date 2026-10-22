@@ -311,6 +311,20 @@ export async function changerStatutTache(
 }
 
 /**
+ * Vrai si l'echeance change reellement de valeur (a la milliseconde, "pas
+ * d'echeance" etant undefined ou null). Sert a remettre rappelEnvoye a false :
+ * renvoyer la meme date dans un PATCH ne doit pas redeclencher un rappel deja
+ * envoye. Fonction pure pour etre testable sans base.
+ */
+export function echeanceChangee(
+  ancienne: Date | null | undefined,
+  nouvelle: Date | null | undefined
+): boolean {
+  if (!ancienne || !nouvelle) return Boolean(ancienne) !== Boolean(nouvelle);
+  return ancienne.getTime() !== nouvelle.getTime();
+}
+
+/**
  * Retire userId des assignes de toutes les taches NON terminees de la
  * colocation (membre qui part ou retire par l'admin) : sans ca, des taches
  * resteraient assignees a un fantome. Les taches "fait" gardent leurs

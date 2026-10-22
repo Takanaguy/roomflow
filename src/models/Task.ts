@@ -35,6 +35,12 @@ const taskSchema = new Schema(
     // nouveau a "fait" ne doit pas fabriquer une 2e occurrence suivante. Reste
     // a true meme si la tache sort de "fait".
     occurrenceGeneree: { type: Boolean, default: false },
+    // Une tache n'est rappelee par email qu'UNE fois (Cron quotidien, lot 9).
+    // Passe a true AVANT l'envoi (voir lib/rappels.ts) et remis a false si
+    // l'echeance est modifiee, pour que le rappel reparte. Les taches
+    // anterieures au champ ne l'ont pas en base : "absent" vaut false, d'ou les
+    // filtres `{ $ne: true }` plutot que `false`.
+    rappelEnvoye: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

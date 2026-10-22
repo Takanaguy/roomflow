@@ -3,11 +3,12 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { connectDB } from "@/lib/mongodb";
 import UserModel from "@/models/User";
+import { COUT_BCRYPT, motDePasseSchema } from "@/lib/auth-schemas";
 
 const registerSchema = z.object({
   name: z.string().trim().min(1, "Le nom est requis"),
   email: z.string().trim().toLowerCase().email("Email invalide"),
-  password: z.string().min(8, "8 caractères minimum"),
+  password: motDePasseSchema,
 });
 
 export async function POST(request: Request) {
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  const passwordHash = await bcrypt.hash(password, COUT_BCRYPT);
 
   const user = await UserModel.create({
     name,

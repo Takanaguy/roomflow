@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { getHouseholdForMember, isAdminMember } from "@/lib/households";
 import {
   changerStatutTache,
+  echeanceChangee,
   estObjectIdValide,
   getTaskInHousehold,
   peutChangerStatut,
@@ -129,7 +130,11 @@ export async function PATCH(
     if (data.recurrence !== undefined) tache.recurrence = data.recurrence;
     if (data.rotation !== undefined) tache.rotation = data.rotation;
     if (data.dueDate !== undefined) {
-      tache.dueDate = data.dueDate === null ? undefined : new Date(data.dueDate);
+      const nouvelleEcheance = data.dueDate === null ? undefined : new Date(data.dueDate);
+      // Nouvelle echeance = nouveau rappel possible (sinon une tache deja
+      // rappelee puis repoussee ne previendrait plus personne).
+      if (echeanceChangee(tache.dueDate, nouvelleEcheance)) tache.rappelEnvoye = false;
+      tache.dueDate = nouvelleEcheance;
     }
     await tache.save();
   }

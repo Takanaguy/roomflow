@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assignesSuivants,
   construireProchaineOccurrence,
+  echeanceChangee,
   estObjectIdValide,
   filtrerAssignesActuels,
   membresParAnciennete,
@@ -734,5 +735,126 @@ describe("validerAssignesEtRotation", () => {
     expect(
       validerAssignesEtRotation({ assignedTo: ["A"], recurrence: "none", rotation: true }, estMembre)
     ).toMatch(/rotation/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// echeanceChangee
+// ---------------------------------------------------------------------------
+
+describe("echeanceChangee", () => {
+  const A = "2026-10-22T00:00:00.000Z";
+
+  it("memes dates : false", () => {
+    expect(echeanceChangee(d(A), d(A))).toBe(false);
+  });
+
+  it("a la milliseconde pres (+1 ms) : true", () => {
+    expect(echeanceChangee(d(A), d("2026-10-22T00:00:00.001Z"))).toBe(true);
+  });
+
+  it("a la milliseconde pres (-1 ms) : true", () => {
+    expect(echeanceChangee(d(A), d("2026-10-21T23:59:59.999Z"))).toBe(true);
+  });
+
+  it("un autre jour : true", () => {
+    expect(echeanceChangee(d(A), d("2026-10-29T00:00:00.000Z"))).toBe(true);
+  });
+
+  it("deux objets Date differents de meme valeur : false (pas de comparaison de reference)", () => {
+    const a = d(A);
+    const b = d(A);
+    expect(a).not.toBe(b);
+    expect(echeanceChangee(a, b)).toBe(false);
+  });
+
+  it("le meme objet des deux cotes : false", () => {
+    const a = d(A);
+    expect(echeanceChangee(a, a)).toBe(false);
+  });
+
+  it("meme instant ecrit avec deux fuseaux differents : false", () => {
+    expect(echeanceChangee(d("2026-10-22T02:00:00.000+02:00"), d("2026-10-22T00:00:00.000Z"))).toBe(false);
+  });
+
+  describe("pas d'echeance : undefined et null sont equivalents", () => {
+    it.each([
+      [undefined, undefined],
+      [null, null],
+      [undefined, null],
+      [null, undefined],
+    ])("%s vers %s : false", (ancienne, nouvelle) => {
+      expect(echeanceChangee(ancienne, nouvelle)).toBe(false);
+    });
+
+    it("null vers une date : true", () => {
+      expect(echeanceChangee(null, d(A))).toBe(true);
+    });
+
+    it("undefined vers une date : true", () => {
+      expect(echeanceChangee(undefined, d(A))).toBe(true);
+    });
+
+    it("une date vers null : true", () => {
+      expect(echeanceChangee(d(A), null)).toBe(true);
+    });
+
+    it("une date vers undefined : true", () => {
+      expect(echeanceChangee(d(A), undefined)).toBe(true);
+    });
+  });
+
+  describe("cas limites de dates", () => {
+    it("le 1er janvier 1970 (timestamp 0) est une vraie date, pas 'pas d'echeance'", () => {
+      // Piege classique : tester la valeur numerique avec un simple `!date`
+      // traiterait 0 comme absent. Un objet Date reste truthy meme a 0.
+      expect(echeanceChangee(d("1970-01-01T00:00:00.000Z"), null)).toBe(true);
+      expect(echeanceChangee(null, d("1970-01-01T00:00:00.000Z"))).toBe(true);
+      expect(echeanceChangee(d("1970-01-01T00:00:00.000Z"), d("1970-01-01T00:00:00.000Z"))).toBe(false);
+    });
+
+    it("dates tres eloignees mais differentes : true", () => {
+      expect(echeanceChangee(d("1900-01-01T00:00:00.000Z"), d("2100-01-01T00:00:00.000Z"))).toBe(true);
+    });
+  });
+
+  describe("dates invalides (comportement fige)", () => {
+    // Le code compare getTime() avec !==, et NaN !== NaN : une date invalide
+    // est donc toujours vue comme "differente", meme de elle-meme. Consequence
+    // pratique : rappelEnvoye repasse a false. Pas de risque dans l'appli, car
+    // la route cree la date avec new Date(data.dueDate) apres validation Zod.
+    it("invalide vers valide : true", () => {
+      expect(echeanceChangee(new Date("x"), d(A))).toBe(true);
+    });
+
+    it("valide vers invalide : true", () => {
+      expect(echeanceChangee(d(A), new Date("x"))).toBe(true);
+    });
+
+    it("invalide vers invalide : true (NaN n'est jamais egal a NaN)", () => {
+      expect(echeanceChangee(new Date("x"), new Date("y"))).toBe(true);
+    });
+
+    it("la meme date invalide des deux cotes : true aussi", () => {
+      const invalide = new Date("x");
+      expect(echeanceChangee(invalide, invalide)).toBe(true);
+    });
+
+    it("invalide vers null : true (une Date invalide est un objet, donc 'a une echeance')", () => {
+      expect(echeanceChangee(new Date("x"), null)).toBe(true);
+      expect(echeanceChangee(null, new Date("x"))).toBe(true);
+    });
+
+    it("ne leve jamais d'exception", () => {
+      expect(() => echeanceChangee(new Date("x"), new Date("y"))).not.toThrow();
+    });
+  });
+
+  it("n'est pas modifiee par l'appel", () => {
+    const a = d(A);
+    const b = d("2026-10-23T00:00:00.000Z");
+    echeanceChangee(a, b);
+    expect(a.toISOString()).toBe(A);
+    expect(b.toISOString()).toBe("2026-10-23T00:00:00.000Z");
   });
 });

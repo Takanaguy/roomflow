@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { connectDB } from "@/lib/mongodb";
 import { getHouseholdForMember, isAdminMember } from "@/lib/households";
+import { notifierNouvelleDepense } from "@/lib/notifications";
 import {
   construireRepartitionInput,
   resoudreRepartition,
@@ -135,6 +136,21 @@ export async function POST(request: Request, ctx: RouteContext<"/api/colocations
     splitType: data.splitType,
     splits: owingResultat.parts,
   });
+
+  // Apres la reponse, a la creation seulement (ni PATCH ni DELETE). On passe
+  // les parts telles que stockees (resolues par resoudreRepartition), pas le
+  // corps brut de la requete, pour que le mail reflete ce qui est en base.
+  after(() =>
+    notifierNouvelleDepense({
+      householdId: id,
+      auteurId: session.user.id,
+      description: data.description,
+      montant: data.amount,
+      payers: payeursResultat.parts,
+      splits: owingResultat.parts,
+      depenseId: expense._id.toString(),
+    })
+  );
 
   const [serialized] = await serializeExpenses(
     [expense],

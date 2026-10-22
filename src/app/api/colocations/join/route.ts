@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { connectDB } from "@/lib/mongodb";
+import { notifierBienvenue } from "@/lib/notifications";
 import HouseholdModel, { type HouseholdMember } from "@/models/Household";
 
 const joinSchema = z.object({
@@ -48,6 +49,12 @@ export async function POST(request: Request) {
   const role = household.members.length === 0 ? "admin" : "member";
   household.members.push({ userId: session.user.id, role, joinedAt: new Date() });
   await household.save();
+
+  // Apres la reponse : un mail lent ou en echec ne doit ni retarder ni casser
+  // l'arrivee dans la colocation. Seulement ici, apres un ajout reussi (pas
+  // pour un deja-membre ni une erreur).
+  const householdId = household._id.toString();
+  after(() => notifierBienvenue(session.user.id, householdId));
 
   return NextResponse.json({ id: household._id.toString(), name: household.name });
 }
