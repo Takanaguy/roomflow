@@ -24,6 +24,12 @@ const userSchema = new Schema(
     // conditionnel, donc deux demandes simultanees ne passent pas toutes les
     // deux. Absente tant que la personne n'a jamais fait de demande.
     derniereDemandeMdpAt: { type: Date },
+    // Date du dernier changement de mot de passe. Les sessions JWT ne sont
+    // stockees nulle part cote serveur : c'est ce champ qui permet de les
+    // revoquer. Toute session ouverte AVANT cette date est refusee a sa
+    // prochaine reverification (callback jwt de src/auth.ts). Absent tant que
+    // le mot de passe n'a jamais change.
+    passwordChangedAt: { type: Date },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

@@ -184,20 +184,21 @@ export async function reinitialiserMotDePasse(
 
   // provider "credentials" dans le filtre : par precaution, un compte Google
   // ne doit jamais recevoir de mot de passe, meme avec un jeton valide.
+  // passwordChangedAt dans la MEME ecriture que le hash : pas d'instant ou le
+  // mot de passe aurait change sans que les anciennes sessions soient
+  // marquees a revoquer. Les sessions deja ouvertes (JWT stockes dans le
+  // navigateur, aucune table de sessions cote serveur) ne sont pas coupees a
+  // la seconde : le callback jwt de src/auth.ts relit cette date au plus tard
+  // tous les INTERVALLE_REVERIFICATION_SECONDES (5 minutes par defaut) et
+  // refuse alors toute session ouverte avant elle.
   const maj = await UserModel.updateOne(
     { _id: doc.userId, provider: "credentials" },
-    { $set: { passwordHash } }
+    { $set: { passwordHash, passwordChangedAt: new Date() } }
   );
   if (maj.matchedCount === 0) return { ok: false };
 
   // Usage unique : plus aucun lien de cette personne ne doit rester valide.
   await PasswordResetTokenModel.deleteMany({ userId: doc.userId });
-
-  // Limite connue : les sessions deja ouvertes (JWT signes, stockes dans le
-  // navigateur, aucune table de sessions cote serveur) restent valides jusqu'a
-  // leur expiration, meme apres ce changement. Les invalider demanderait un
-  // numero de version de session dans le jeton, verifie a chaque requete :
-  // hors perimetre du lot 9.
 
   return { ok: true };
 }

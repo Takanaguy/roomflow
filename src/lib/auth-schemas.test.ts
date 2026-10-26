@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
 import { describe, expect, it } from "vitest";
-import { COUT_BCRYPT, motDePasseSchema } from "@/lib/auth-schemas";
+import { COUT_BCRYPT, HASH_BCRYPT_BIDON, motDePasseSchema } from "@/lib/auth-schemas";
 
 const MESSAGE = "8 caractères minimum";
 
@@ -142,6 +142,129 @@ describe("COUT_BCRYPT", () => {
     expect(await bcrypt.compare("MotDePasse-Test-1", hash)).toBe(true);
     expect(await bcrypt.compare("MotDePasse-Test-2", hash)).toBe(false);
   });
+});
+
+// ---------------------------------------------------------------------------
+// HASH_BCRYPT_BIDON
+// ---------------------------------------------------------------------------
+
+// Chronometre une comparaison bcrypt, en ms.
+async function dureeCompare(motDePasse: string, hash: string): Promise<number> {
+  const debut = performance.now();
+  await bcrypt.compare(motDePasse, hash);
+  return performance.now() - debut;
+}
+
+describe("HASH_BCRYPT_BIDON : forme", () => {
+  // Format bcrypt : "$" + version + "$" + cout sur 2 chiffres + "$" + 53
+  // caracteres (22 de sel + 31 de hash). On decoupe le texte au lieu d'ecrire
+  // le cout 12 en dur : le test suit COUT_BCRYPT si on le change un jour.
+  const [vide, version, cout, reste] = HASH_BCRYPT_BIDON.split("$");
+
+  it("commence par '$' (le premier morceau avant le '$' est vide)", () => {
+    expect(vide).toBe("");
+  });
+
+  it("version bcrypt reconnue ('2a', '2b' ou '2y')", () => {
+    expect(["2a", "2b", "2y"]).toContain(version);
+  });
+
+  it("le cout ecrit apres le 2e '$' vaut COUT_BCRYPT (lu par parsing, pas par regex figee)", () => {
+    expect(cout).toMatch(/^\d{2}$/);
+    expect(Number(cout)).toBe(COUT_BCRYPT);
+  });
+
+  it("le cout lu par bcryptjs lui-meme est COUT_BCRYPT", () => {
+    expect(bcrypt.getRounds(HASH_BCRYPT_BIDON)).toBe(COUT_BCRYPT);
+  });
+
+  it("longueur 60 caracteres", () => {
+    expect(HASH_BCRYPT_BIDON).toHaveLength(60);
+  });
+
+  it("apres le cout : 53 caracteres de l'alphabet bcrypt (sel + hash)", () => {
+    expect(reste).toHaveLength(53);
+    expect(reste).toMatch(/^[./A-Za-z0-9]{53}$/);
+  });
+
+  it("exactement 4 morceaux separes par '$' (pas de '$' parasite)", () => {
+    expect(HASH_BCRYPT_BIDON.split("$")).toHaveLength(4);
+  });
+
+  it("meme version et meme cout qu'un vrai hash produit par bcrypt.hash", async () => {
+    const vrai = await bcrypt.hash("MotDePasse-Test-1", COUT_BCRYPT);
+    const [, versionVraie, coutVrai] = vrai.split("$");
+    expect(coutVrai).toBe(cout);
+    // La version peut differer d'une lettre selon la bibliotheque ("2a"/"2b") ;
+    // ce qui compte pour le temps de calcul est le cout. On verifie seulement
+    // que les deux sont dans la meme famille 2x.
+    expect(versionVraie).toMatch(/^2[aby]$/);
+    expect(version).toMatch(/^2[aby]$/);
+  });
+});
+
+describe("HASH_BCRYPT_BIDON : comparaison", () => {
+  it("bcrypt.compare('n-importe-quoi', hash bidon) : false, sans exception", async () => {
+    await expect(bcrypt.compare("n-importe-quoi", HASH_BCRYPT_BIDON)).resolves.toBe(false);
+  });
+
+  it("un mot de passe plausible : false aussi", async () => {
+    await expect(bcrypt.compare("MotDePasse-Plausible-123!", HASH_BCRYPT_BIDON)).resolves.toBe(
+      false
+    );
+  });
+
+  it("mot de passe vide : false, sans exception", async () => {
+    await expect(bcrypt.compare("", HASH_BCRYPT_BIDON)).resolves.toBe(false);
+  });
+
+  it("mots de passe courants ('password', '12345678') : false", async () => {
+    await expect(bcrypt.compare("password", HASH_BCRYPT_BIDON)).resolves.toBe(false);
+    await expect(bcrypt.compare("12345678", HASH_BCRYPT_BIDON)).resolves.toBe(false);
+  });
+
+  it("le hash est un vrai hash bcrypt : bcrypt.compare ne le rejette pas comme 'illisible'", async () => {
+    // bcryptjs renvoie false (sans calcul) pour un hash de mauvaise longueur
+    // ou de mauvais format. Si le hash bidon etait abime, la comparaison serait
+    // instantanee et on perdrait l'egalisation du temps de reponse : c'est ce
+    // que le test de duree ci-dessous attrape.
+    expect(HASH_BCRYPT_BIDON).toMatch(/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/);
+  });
+});
+
+describe("HASH_BCRYPT_BIDON : temps de calcul", () => {
+  // Les durees dependent de la machine : on ne fixe aucune borne haute en
+  // millisecondes absolues. On compare au temps d'un vrai hash du MEME cout
+  // calcule sur la meme machine au meme moment, ce qui annule la vitesse de la
+  // machine. Le minimum de deux mesures limite l'effet d'un pic de charge.
+  it("la comparaison prend un vrai temps de calcul de cout 12 (borne basse seulement)", async () => {
+    const t = Math.min(
+      await dureeCompare("n-importe-quoi", HASH_BCRYPT_BIDON),
+      await dureeCompare("n-importe-quoi", HASH_BCRYPT_BIDON)
+    );
+    // Un cout 4 ou un hash rejete sans calcul prendrait 1 a 5 ms. Le cout 12
+    // demande 4096 fois plus de travail que le cout 4 : meme sur une machine
+    // tres rapide, on depasse largement 20 ms.
+    expect(t).toBeGreaterThan(20);
+  }, 30_000);
+
+  it("meme ordre de grandeur que la comparaison avec un vrai hash de meme cout", async () => {
+    const vrai = await bcrypt.hash("MotDePasse-Test-1", COUT_BCRYPT);
+    const tBidon = Math.min(
+      await dureeCompare("MotDePasse-Test-2", HASH_BCRYPT_BIDON),
+      await dureeCompare("MotDePasse-Test-2", HASH_BCRYPT_BIDON)
+    );
+    const tVrai = Math.min(
+      await dureeCompare("MotDePasse-Test-2", vrai),
+      await dureeCompare("MotDePasse-Test-2", vrai)
+    );
+    // Facteur 3 dans les deux sens : large pour ne pas casser sur une machine
+    // chargee, mais un hash de cout 10 (4 fois moins de travail) ou de cout 14
+    // (4 fois plus) depasserait ce facteur.
+    const ratio = tBidon / tVrai;
+    expect(ratio).toBeGreaterThan(1 / 3);
+    expect(ratio).toBeLessThan(3);
+  }, 60_000);
 });
 
 // ---------------------------------------------------------------------------

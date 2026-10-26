@@ -24,7 +24,12 @@ export default function ConnexionPage() {
     setEnCours(false);
 
     if (res?.error) {
-      setErreur("Email ou mot de passe incorrect.");
+      // code pose par TropDeTentatives dans src/auth.ts.
+      setErreur(
+        res.code === "trop_de_tentatives"
+          ? "Trop de tentatives de connexion. Réessaie dans 15 minutes."
+          : "Email ou mot de passe incorrect."
+      );
       return;
     }
 

@@ -1,10 +1,70 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import GitHub from "next-auth/providers/github";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/mongodb";
+import { HASH_BCRYPT_BIDON } from "@/lib/auth-schemas";
+import { estObjectIdValide } from "@/lib/ids";
+import {
+  MAX_TENTATIVES_EMAIL,
+  MAX_TENTATIVES_IP,
+  cleEmail,
+  cleIp,
+  extraireIp,
+  reinitialiserCompteur,
+  reserverTentative,
+} from "@/lib/login-limiter";
+import {
+  doitReverifier,
+  lireIntervalleReverification,
+  sessionRevoquee,
+} from "@/lib/session-guard";
 import UserModel from "@/models/User";
+
+/**
+ * Sous-classe de CredentialsSignin : Auth.js recopie `code` dans l'URL de
+ * reponse (?error=CredentialsSignin&code=...) et signIn(..., { redirect:
+ * false }) le rend au client dans `res.code`. Le message ne revele rien sur
+ * le compte : le blocage s'applique a n'importe quel email, existant ou non.
+ */
+class TropDeTentatives extends CredentialsSignin {
+  code = "trop_de_tentatives";
+}
+
+/**
+ * Delai maximal entre deux relectures du compte pour une session ouverte.
+ * C'est aussi le delai maximal avant qu'une session revoquee (mot de passe
+ * change, compte supprime) soit effectivement refusee. SESSION_RECHECK_SECONDS
+ * ne sert qu'a tester avec un delai court.
+ */
+const INTERVALLE_REVERIFICATION_SECONDES = lireIntervalleReverification(
+  process.env.SESSION_RECHECK_SECONDS
+);
+
+/**
+ * Lit le strict necessaire pour decider de la revocation. null = la base n'a
+ * pas repondu : l'appelant garde la session (voir le callback jwt).
+ */
+async function lireEtatCompte(
+  id: string
+): Promise<{ utilisateurExiste: boolean; passwordChangedAt: Date | null | undefined } | null> {
+  // Nos jetons portent toujours un _id Mongo valide : un id mal forme ne
+  // designe aucun compte (et ferait lever une CastError a Mongoose).
+  if (!estObjectIdValide(id)) return { utilisateurExiste: false, passwordChangedAt: null };
+  try {
+    await connectDB();
+    const doc = await UserModel.findById(id).select("_id passwordChangedAt").lean<{
+      passwordChangedAt?: Date | null;
+    }>();
+    return { utilisateurExiste: !!doc, passwordChangedAt: doc?.passwordChangedAt };
+  } catch (e) {
+    console.error(
+      `[session] vérification en base impossible, session conservée : ${e instanceof Error ? e.name : "erreur inconnue"}`
+    );
+    return null;
+  }
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // Google et GitHub lisent leurs identifiants automatiquement depuis
@@ -24,7 +84,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Mot de passe", type: "password" },
       },
-      async authorize(credentials) {
+      // `request` est une copie de la requete d'origine, en-tetes compris
+      // (@auth/core la reconstruit avant d'appeler authorize).
+      async authorize(credentials, request) {
         const email =
           typeof credentials?.email === "string"
             ? credentials.email.toLowerCase().trim()
@@ -37,6 +99,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         await connectDB();
 
+        // Limite d'essais AVANT toute lecture du compte : la tentative est
+        // comptee des son arrivee (voir reserverTentative), et la decision ne
+        // depend pas de l'existence du compte. Par email (protege un compte
+        // vise) ET par IP (freine qui essaie un mot de passe sur beaucoup
+        // d'emails differents). Les deux compteurs avancent meme si l'un
+        // bloque deja.
+        const cleDeLEmail = cleEmail(email);
+        const ip = extraireIp(request.headers);
+        const [parEmail, parIp] = await Promise.all([
+          reserverTentative(cleDeLEmail, MAX_TENTATIVES_EMAIL),
+          ip ? reserverTentative(cleIp(ip), MAX_TENTATIVES_IP) : null,
+        ]);
+        if (!parEmail.autorise || (parIp && !parIp.autorise)) {
+          throw new TropDeTentatives();
+        }
+
         // provider: "credentials" explicite : un compte cree via Google ne
         // doit jamais pouvoir se connecter par mot de passe, meme s'il en
         // devinait un.
@@ -44,10 +122,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email,
           provider: "credentials",
         }).select("+passwordHash");
-        if (!user?.passwordHash) return null;
 
-        const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
+        // bcrypt.compare TOUJOURS execute, contre un hash bidon de meme cout
+        // si le compte n'existe pas : sans ca, un email inconnu repondrait
+        // en quelques ms et un email connu en environ 300 ms, et le temps de
+        // reponse dirait quels comptes existent.
+        const valid = await bcrypt.compare(password, user?.passwordHash ?? HASH_BCRYPT_BIDON);
+        if (!user?.passwordHash || !valid) return null;
+
+        // Cle email seulement, jamais la cle IP (voir reinitialiserCompteur).
+        await reinitialiserCompteur(cleDeLEmail);
 
         return {
           id: user._id.toString(),
@@ -115,8 +199,52 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true;
     },
 
+    /**
+     * Appele par @auth/core a la connexion (avec `user`), puis a CHAQUE
+     * lecture de session pour un jeton existant (sans `user`) : auth() dans
+     * un Server Component ou une route, proxy.ts, /api/auth/session cote
+     * client, et useSession().update() (trigger "update"). Renvoyer null
+     * termine la session : @auth/core ne renvoie alors aucune session (auth()
+     * donne null, le proxy redirige vers /connexion) et efface le cookie
+     * quand la reponse peut en poser (proxy, /api/auth/session ; pas un
+     * Server Component, qui ne peut pas ecrire de cookie, mais il recoit
+     * quand meme null).
+     *
+     * Revocation : le JWT est stocke dans le navigateur, rien cote serveur ne
+     * permet de "l'effacer". On relit donc le compte au plus tard toutes les
+     * INTERVALLE_REVERIFICATION_SECONDES. Entre deux relectures, une session
+     * revoquee reste utilisable : c'est le delai maximal de revocation.
+     */
     async jwt({ token, user, trigger, session }) {
-      if (user?.id) token.id = user.id;
+      const maintenant = Date.now();
+
+      if (user?.id) {
+        token.id = user.id;
+        // Claims PROPRES, pas le `iat` du JWT : @auth/core re-signe le jeton
+        // a chaque lecture de session (setIssuedAt), donc `iat` serait
+        // toujours "maintenant" et un cookie vole prolongerait lui-meme sa
+        // validite. connecteLe n'est ecrit qu'ici, a la connexion.
+        token.connecteLe = maintenant;
+        token.verifieLe = maintenant;
+      } else if (
+        token.id &&
+        doitReverifier(token.verifieLe, maintenant, INTERVALLE_REVERIFICATION_SECONDES)
+      ) {
+        const etat = await lireEtatCompte(token.id);
+        if (etat) {
+          if (sessionRevoquee({ connecteLe: token.connecteLe, ...etat })) return null;
+          token.verifieLe = maintenant;
+          // Jeton ouvert avant l'existence de connecteLe : on pose la date de
+          // cette premiere verification. Limite : pour ces jetons-la, la
+          // "connexion recente" (futur ecran de suppression de compte) part
+          // de cette verification et non de la vraie connexion. La
+          // revocation, elle, reste juste (voir sessionRevoquee).
+          if (typeof token.connecteLe !== "number") token.connecteLe = maintenant;
+        }
+        // etat null = panne de base : on NE revoque PAS (sinon une panne
+        // deconnecterait tout le monde). verifieLe n'avance pas, donc la
+        // verification est retentee a la requete suivante.
+      }
 
       // Declenche par useSession().update({ name }) sur /profil. La donnee
       // vient du client : on la revalide plutot que de faire confiance au
@@ -133,6 +261,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token.id && session.user) {
         session.user.id = token.id as string;
       }
+      // Pour exiger une connexion recente avant une action sensible (futur
+      // ecran de suppression de compte). Absent seulement pour un ancien
+      // jeton pas encore reverifie : a traiter comme "pas recent".
+      if (typeof token.connecteLe === "number") session.connecteLe = token.connecteLe;
       return session;
     },
   },
