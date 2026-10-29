@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { connectDB } from "@/lib/mongodb";
 import { notifierBienvenue } from "@/lib/notifications";
 import HouseholdModel, { type HouseholdMember } from "@/models/Household";
+import UserModel from "@/models/User";
 
 const joinSchema = z.object({
   inviteCode: z.string().trim().min(1, "Code requis"),
@@ -25,6 +26,13 @@ export async function POST(request: Request) {
   }
 
   await connectDB();
+  // Un compte supprime garde une session valide jusqu'a la prochaine
+  // reverification du jeton (5 minutes au plus) : il ne doit pas pouvoir
+  // reapparaitre comme membre d'une colocation pendant ce delai.
+  if (!(await UserModel.exists({ _id: session.user.id }))) {
+    return NextResponse.json({ error: "Non connecté" }, { status: 401 });
+  }
+
   const household = await HouseholdModel.findOne({
     inviteCode: parsed.data.inviteCode,
   });

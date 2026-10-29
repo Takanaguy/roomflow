@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { getHouseholdForMember, isAdminMember, serializeHousehold } from "@/lib/households";
-import HouseholdModel from "@/models/Household";
-import ExpenseModel from "@/models/Expense";
-import SettlementModel from "@/models/Settlement";
-import ShoppingItemModel from "@/models/ShoppingItem";
-import TaskModel from "@/models/Task";
+import {
+  detruireColocation,
+  getHouseholdForMember,
+  isAdminMember,
+  serializeHousehold,
+} from "@/lib/households";
 
 const editSchema = z.object({
   name: z.string().trim().min(1, "Le nom est requis").max(80).optional(),
@@ -81,12 +81,8 @@ export async function PATCH(
  * Destruction definitive (admin uniquement) - demande explicitement par
  * Tanguy comme SEULE facon de vraiment supprimer une colocation ; quitter
  * ne fait que la vider (voir promouvoirDoyen / join pour ce qui se passe
- * quand elle se vide toute seule).
- *
- * Cascade sur Expense depuis le lot 4 (constate en testant : une colocation
- * detruite laissait ses depenses orphelines en base, sans plus aucune
- * colocation pour les referencer). Task (lot 6), Settlement (oubli du
- * lot 5) et ShoppingItem (lot 7) suivent la meme logique.
+ * quand elle se vide toute seule). La cascade (depenses, remboursements,
+ * taches, articles) est dans detruireColocation.
  */
 export async function DELETE(
   _req: Request,
@@ -110,10 +106,6 @@ export async function DELETE(
     );
   }
 
-  await ExpenseModel.deleteMany({ householdId: id });
-  await SettlementModel.deleteMany({ householdId: id });
-  await TaskModel.deleteMany({ householdId: id });
-  await ShoppingItemModel.deleteMany({ householdId: id });
-  await HouseholdModel.findByIdAndDelete(id);
+  await detruireColocation(id);
   return NextResponse.json({ ok: true });
 }

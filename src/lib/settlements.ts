@@ -171,3 +171,30 @@ export async function confirmerReglement(
   });
   return { ok: true, amount: dette.centimes / 100 };
 }
+
+/**
+ * Suppression de compte : userId renonce a tout ce qu'on lui doit dans la
+ * colocation. Seul le crediteur peut confirmer une reception (voir
+ * confirmerReglement) : une fois son compte supprime, plus personne ne
+ * pourrait le faire et ses debiteurs garderaient pour toujours une dette
+ * impossible a solder. On enregistre donc un Settlement par dette simplifiee
+ * dont il est le crediteur, du montant exact recalcule ici (memes champs que
+ * confirmerReglement). Relancee apres coup, elle ne trouve plus rien a
+ * abandonner et renvoie 0. Renvoie le nombre de settlements crees.
+ */
+export async function abandonnerCreances(householdId: string, userId: string): Promise<number> {
+  const soldes = await calculerSoldesNets(householdId);
+  const creances = simplifier(soldes).filter((d) => d.toUserId === userId);
+  if (creances.length === 0) return 0;
+
+  await connectDB();
+  await SettlementModel.insertMany(
+    creances.map((d) => ({
+      householdId,
+      fromUserId: d.fromUserId,
+      toUserId: d.toUserId,
+      amount: d.centimes / 100,
+    }))
+  );
+  return creances.length;
+}

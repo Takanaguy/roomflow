@@ -3,6 +3,10 @@ import HouseholdModel, {
   type HouseholdMember,
 } from "@/models/Household";
 import UserModel from "@/models/User";
+import ExpenseModel from "@/models/Expense";
+import SettlementModel from "@/models/Settlement";
+import ShoppingItemModel from "@/models/ShoppingItem";
+import TaskModel from "@/models/Task";
 import { connectDB } from "@/lib/mongodb";
 import { estObjectIdValide } from "@/lib/ids";
 import type { HydratedDocument } from "mongoose";
@@ -53,6 +57,28 @@ export function promouvoirDoyen(members: HouseholdMember[]): void {
     m.joinedAt < plusAncien.joinedAt ? m : plusAncien
   );
   doyen.role = "admin";
+}
+
+/**
+ * Destruction definitive d'une colocation et de tout ce qui lui appartient.
+ * Les droits (admin) sont verifies par l'appelant. Partagee par
+ * DELETE /api/colocations/[id] et la suppression de compte (colocation dont
+ * le compte supprime etait le dernier membre).
+ *
+ * Cascade sur Expense depuis le lot 4 (constate en testant : une colocation
+ * detruite laissait ses depenses orphelines en base, sans plus aucune
+ * colocation pour les referencer). Task (lot 6), Settlement (oubli du
+ * lot 5) et ShoppingItem (lot 7) suivent la meme logique. La colocation est
+ * supprimee EN DERNIER : si le processus s'arrete au milieu, elle existe
+ * encore et un second appel termine le menage.
+ */
+export async function detruireColocation(householdId: string): Promise<void> {
+  await connectDB();
+  await ExpenseModel.deleteMany({ householdId });
+  await SettlementModel.deleteMany({ householdId });
+  await TaskModel.deleteMany({ householdId });
+  await ShoppingItemModel.deleteMany({ householdId });
+  await HouseholdModel.findByIdAndDelete(householdId);
 }
 
 export type ColocationMembreDetail = {

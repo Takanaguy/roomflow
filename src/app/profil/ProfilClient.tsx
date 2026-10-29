@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import NotificationsEmailForm from "./NotificationsEmailForm";
 
-export default function ProfilClient({ notificationsEmail }: { notificationsEmail: boolean }) {
+// `children` : la zone de suppression du compte, preparee par la page serveur
+// (meme principe que la prop `apercu` de ColocationClient).
+export default function ProfilClient({
+  notificationsEmail,
+  children,
+}: {
+  notificationsEmail: boolean;
+  children?: ReactNode;
+}) {
   const { data: session, status, update } = useSession();
   const router = useRouter();
   const [name, setName] = useState(session?.user?.name ?? "");
@@ -79,6 +87,8 @@ export default function ProfilClient({ notificationsEmail }: { notificationsEmai
       </form>
 
       <NotificationsEmailForm initial={notificationsEmail} />
+
+      {children}
     </main>
   );
 }

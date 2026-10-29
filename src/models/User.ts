@@ -30,6 +30,14 @@ const userSchema = new Schema(
     // prochaine reverification (callback jwt de src/auth.ts). Absent tant que
     // le mot de passe n'a jamais change.
     passwordChangedAt: { type: Date },
+    // Verrou de la suppression de compte (src/lib/account.ts). Pose par un
+    // seul findOneAndUpdate conditionnel : deux suppressions lancees en meme
+    // temps (deux onglets) ne passent pas toutes les deux, sinon les creances
+    // seraient abandonnees deux fois et les colocataires se retrouveraient
+    // avec une fausse creance. Un verrou plus vieux que
+    // DUREE_VERROU_SUPPRESSION_MINUTES est repris (suppression interrompue).
+    // Absent hors suppression ; disparait avec le compte.
+    suppressionDebut: { type: Date },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

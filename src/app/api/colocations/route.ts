@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { connectDB } from "@/lib/mongodb";
 import HouseholdModel from "@/models/Household";
+import UserModel from "@/models/User";
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Le nom est requis").max(80),
@@ -47,6 +48,12 @@ export async function POST(request: Request) {
   }
 
   await connectDB();
+  // Meme garde que /join : un compte supprime dont la session n'est pas encore
+  // revoquee ne doit pas creer une colocation a son nom.
+  if (!(await UserModel.exists({ _id: session.user.id }))) {
+    return NextResponse.json({ error: "Non connecté" }, { status: 401 });
+  }
+
   const household = await HouseholdModel.create({
     name: parsed.data.name,
     description: parsed.data.description,
