@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { DonneesDashboard } from "@/lib/dashboard";
+import BoutonExportPdf from "./BoutonExportPdf";
 import GraphiqueCategories from "./GraphiqueCategories";
 
 const FORMAT_MOIS = new Intl.DateTimeFormat("fr-FR", {
@@ -40,7 +41,7 @@ export default function DashboardColocation({
 
   return (
     <section aria-label="Aperçu de la colocation" className="mt-6 flex flex-col gap-4">
-      <nav aria-label="Mois affiché" className="flex items-center justify-between gap-2">
+      <nav aria-label="Mois affiché" className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-3">
           {/* Un emplacement vide garde le libelle du mois a la meme place que
               la fleche soit presente ou non. */}
@@ -70,11 +71,14 @@ export default function DashboardColocation({
             <span className="w-10" aria-hidden="true" />
           )}
         </div>
-        {!mois.estMoisCourant && (
-          <Link href={base} className="text-sm text-zinc-600 hover:underline">
-            Mois en cours
-          </Link>
-        )}
+        <div className="flex items-start gap-3">
+          {!mois.estMoisCourant && (
+            <Link href={base} className="py-1.5 text-sm text-zinc-600 hover:underline">
+              Mois en cours
+            </Link>
+          )}
+          <BoutonExportPdf householdId={householdId} mois={mois.cle} />
+        </div>
       </nav>
 
       <div className={CARTE}>
