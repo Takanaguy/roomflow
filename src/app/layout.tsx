@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RoomFlow — Gestionnaire de colocation",
+  title: "RoomFlow : Gestionnaire de colocation",
   description:
     "Centralise les dépenses de colocation, calcule qui doit combien à qui, et simplifie les remboursements.",
 };
