@@ -106,7 +106,9 @@ export function parserMois(param: string | undefined, maintenant: Date): MoisDas
 
 // Ordre fixe : sert d'ordre de depart et de departage des egalites. "autre"
 // est aussi la categorie de repli pour une valeur inconnue.
-const CATEGORIES_DEPENSE = [
+// Exporte pour que le recapitulatif mensuel nomme les categories avec la meme
+// source que le graphique, au lieu d'une quatrieme copie de la liste.
+export const CATEGORIES_DEPENSE = [
   { category: "courses", label: "Courses" },
   { category: "factures", label: "Factures" },
   { category: "loyer", label: "Loyer" },
