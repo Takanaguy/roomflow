@@ -11,6 +11,7 @@ import {
   MAX_TENTATIVES_IP,
   cleEmail,
   cleIp,
+  emailUtilisableCommeCle,
   extraireIp,
   reinitialiserCompteur,
   reserverTentative,
@@ -101,19 +102,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // Limite d'essais AVANT toute lecture du compte : la tentative est
         // comptee des son arrivee (voir reserverTentative), et la decision ne
-        // depend pas de l'existence du compte. Par email (protege un compte
-        // vise) ET par IP (freine qui essaie un mot de passe sur beaucoup
-        // d'emails differents). Les deux compteurs avancent meme si l'un
-        // bloque deja.
-        const cleDeLEmail = cleEmail(email);
+        // depend pas de l'existence du compte. Par IP (freine qui essaie un
+        // mot de passe sur beaucoup d'emails differents) PUIS par email
+        // (protege un compte vise). L'IP d'abord et seule : une IP bloquee
+        // n'incremente plus aucun compteur email, donc ne peut ni bloquer des
+        // comptes a distance au-dela de sa propre limite, ni creer de
+        // nouvelles cles.
         const ip = extraireIp(request.headers);
-        const [parEmail, parIp] = await Promise.all([
-          reserverTentative(cleDeLEmail, MAX_TENTATIVES_EMAIL),
-          ip ? reserverTentative(cleIp(ip), MAX_TENTATIVES_IP) : null,
-        ]);
-        if (!parEmail.autorise || (parIp && !parIp.autorise)) {
-          throw new TropDeTentatives();
+        if (ip) {
+          const parIp = await reserverTentative(cleIp(ip), MAX_TENTATIVES_IP);
+          if (!parIp.autorise) throw new TropDeTentatives();
         }
+
+        // Pas un email : aucun compte ne peut correspondre, et on ne cree pas
+        // de compteur pour une cle arbitraire (sinon un anonyme remplirait la
+        // base avec des "emails" geants). L'IP a deja ete comptee ci-dessus.
+        // bcrypt tourne quand meme : la reponse prend le meme temps qu'un
+        // vrai echec.
+        if (!emailUtilisableCommeCle(email)) {
+          await bcrypt.compare(password, HASH_BCRYPT_BIDON);
+          return null;
+        }
+
+        const cleDeLEmail = cleEmail(email);
+        const parEmail = await reserverTentative(cleDeLEmail, MAX_TENTATIVES_EMAIL);
+        if (!parEmail.autorise) throw new TropDeTentatives();
 
         // provider: "credentials" explicite : un compte cree via Google ne
         // doit jamais pouvoir se connecter par mot de passe, meme s'il en

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   FENETRE_MINUTES,
+  LONGUEUR_MAX_EMAIL,
   MAX_TENTATIVES_EMAIL,
   MAX_TENTATIVES_IP,
   cleEmail,
   cleIp,
+  emailUtilisableCommeCle,
   extraireIp,
   fenetreTerminee,
+  normaliserIp,
   tentativeAutorisee,
 } from "@/lib/login-limiter";
 
@@ -118,15 +121,288 @@ describe("cleIp", () => {
     expect(cleIp("1.1.1.1")).not.toBe(cleIp("1.1.1.2"));
   });
 
-  it("IPv6 : conservee telle quelle apres le prefixe", () => {
-    expect(cleIp("2001:db8::1")).toBe("ip:2001:db8::1");
+  it("IPv6 : ramenee a son prefixe /64 (forme canonique de normaliserIp) apres le prefixe", () => {
+    expect(cleIp("2001:db8::1")).toBe("ip:2001:db8:0:0::/64");
   });
 
-  it("pas de normalisation de casse (c'est le travail d'extraireIp, pas de cleIp)", () => {
-    // Documente le code actuel : "2001:DB8::1" et "2001:db8::1" sont la meme
-    // adresse mais donnent deux cles. Sans consequence tant que l'hebergeur
-    // renvoie toujours la meme ecriture.
-    expect(cleIp("2001:DB8::1")).not.toBe(cleIp("2001:db8::1"));
+  it("normalisation de casse : '2001:DB8::1' et '2001:db8::1' donnent la meme cle", () => {
+    // Meme adresse, deux ecritures : un seul compteur (voir normaliserIp).
+    expect(cleIp("2001:DB8::1")).toBe(cleIp("2001:db8::1"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// emailUtilisableCommeCle
+// ---------------------------------------------------------------------------
+
+// Email bien forme d'une longueur exacte : partie locale en "a", domaine fixe.
+const emailDeLongueur = (n: number) => "a".repeat(n - "@x.fr".length) + "@x.fr";
+
+describe("emailUtilisableCommeCle : cas valides", () => {
+  it("email normal : vrai", () => {
+    expect(emailUtilisableCommeCle("test@x.fr")).toBe(true);
+  });
+
+  it("email avec sous-domaine, point, plus et tiret : vrai (volontairement large)", () => {
+    expect(emailUtilisableCommeCle("jean.dupont+roomflow@mail.sous-domaine.example.com")).toBe(true);
+  });
+
+  it("domaine sans point ('a@b') : vrai (la forme minimale n'exige pas de point)", () => {
+    expect(emailUtilisableCommeCle("a@b")).toBe(true);
+  });
+});
+
+describe("emailUtilisableCommeCle : frontiere de longueur", () => {
+  it("LONGUEUR_MAX_EMAIL vaut 254 (RFC 5321)", () => {
+    expect(LONGUEUR_MAX_EMAIL).toBe(254);
+  });
+
+  it("254 caracteres, bien forme : vrai", () => {
+    const email = emailDeLongueur(254);
+    expect(email).toHaveLength(254);
+    expect(emailUtilisableCommeCle(email)).toBe(true);
+  });
+
+  it("255 caracteres, bien forme : faux", () => {
+    const email = emailDeLongueur(255);
+    expect(email).toHaveLength(255);
+    expect(emailUtilisableCommeCle(email)).toBe(false);
+  });
+
+  it("tres long (100 000 caracteres) : faux, sans exception", () => {
+    expect(emailUtilisableCommeCle(emailDeLongueur(100_000))).toBe(false);
+  });
+});
+
+describe("emailUtilisableCommeCle : cas refuses", () => {
+  it("sans @ : faux", () => {
+    expect(emailUtilisableCommeCle("test.x.fr")).toBe(false);
+  });
+
+  it("avec un espace au milieu : faux", () => {
+    expect(emailUtilisableCommeCle("te st@x.fr")).toBe(false);
+    expect(emailUtilisableCommeCle("test@x .fr")).toBe(false);
+  });
+
+  it("espace au debut ou a la fin : faux (la valeur doit deja etre trimee)", () => {
+    expect(emailUtilisableCommeCle(" test@x.fr")).toBe(false);
+    expect(emailUtilisableCommeCle("test@x.fr ")).toBe(false);
+  });
+
+  it("tabulation ou retour a la ligne : faux", () => {
+    expect(emailUtilisableCommeCle("te\tst@x.fr")).toBe(false);
+    expect(emailUtilisableCommeCle("test@x.fr\n")).toBe(false);
+  });
+
+  it("chaine vide : faux", () => {
+    expect(emailUtilisableCommeCle("")).toBe(false);
+  });
+
+  it("'@x' (partie locale vide) : faux", () => {
+    expect(emailUtilisableCommeCle("@x")).toBe(false);
+  });
+
+  it("'x@' (domaine vide) : faux", () => {
+    expect(emailUtilisableCommeCle("x@")).toBe(false);
+  });
+
+  it("'@' seul : faux", () => {
+    expect(emailUtilisableCommeCle("@")).toBe(false);
+  });
+
+  it("deux @ ('a@b@c') : faux", () => {
+    expect(emailUtilisableCommeCle("a@b@c")).toBe(false);
+  });
+
+  it("valeur qui n'est pas une chaine (null, undefined, nombre) : faux, sans exception", () => {
+    expect(emailUtilisableCommeCle(null as unknown as string)).toBe(false);
+    expect(emailUtilisableCommeCle(undefined as unknown as string)).toBe(false);
+    expect(emailUtilisableCommeCle(42 as unknown as string)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normaliserIp
+// ---------------------------------------------------------------------------
+
+describe("normaliserIp : IPv4", () => {
+  it("IPv4 : inchangee", () => {
+    expect(normaliserIp("1.2.3.4")).toBe("1.2.3.4");
+    expect(normaliserIp("192.168.0.1")).toBe("192.168.0.1");
+    expect(normaliserIp("255.255.255.255")).toBe("255.255.255.255");
+    expect(normaliserIp("0.0.0.0")).toBe("0.0.0.0");
+  });
+});
+
+describe("normaliserIp : IPv4 mappee en IPv6", () => {
+  it("'::ffff:1.2.3.4' donne '1.2.3.4'", () => {
+    expect(normaliserIp("::ffff:1.2.3.4")).toBe("1.2.3.4");
+  });
+
+  it("forme hexadecimale '::ffff:102:304' donne '1.2.3.4'", () => {
+    expect(normaliserIp("::ffff:102:304")).toBe("1.2.3.4");
+  });
+
+  it("les deux ecritures d'une meme machine donnent la meme valeur (un seul compteur)", () => {
+    expect(normaliserIp("::ffff:1.2.3.4")).toBe(normaliserIp("::ffff:102:304"));
+    expect(normaliserIp("::ffff:1.2.3.4")).toBe(normaliserIp("1.2.3.4"));
+  });
+
+  it("majuscules : '::FFFF:1.2.3.4' donne '1.2.3.4'", () => {
+    expect(normaliserIp("::FFFF:1.2.3.4")).toBe("1.2.3.4");
+  });
+
+  it("forme developpee '0:0:0:0:0:ffff:102:304' donne '1.2.3.4'", () => {
+    expect(normaliserIp("0:0:0:0:0:ffff:102:304")).toBe("1.2.3.4");
+  });
+
+  it("octets extremes : '::ffff:255.255.255.255' et '::ffff:0.0.0.0'", () => {
+    expect(normaliserIp("::ffff:255.255.255.255")).toBe("255.255.255.255");
+    expect(normaliserIp("::ffff:0.0.0.0")).toBe("0.0.0.0");
+  });
+
+  it("IPv4 finale mais pas le prefixe 'ffff' ('64:ff9b::1.2.3.4') : traitee comme IPv6 ordinaire, pas comme mappee", () => {
+    expect(normaliserIp("64:ff9b::1.2.3.4")).toBe("64:ff9b:0:0::/64");
+  });
+});
+
+describe("normaliserIp : IPv6 ramenee a son prefixe /64", () => {
+  it("'2001:DB8::1' donne '2001:db8:0:0::/64' (minuscules, sans zeros de tete)", () => {
+    expect(normaliserIp("2001:DB8::1")).toBe("2001:db8:0:0::/64");
+  });
+
+  it("forme developpee avec zeros de tete : meme resultat", () => {
+    expect(normaliserIp("2001:0db8:0000:0000:0000:0000:0000:0001")).toBe("2001:db8:0:0::/64");
+  });
+
+  it("exemple du commentaire du code : '2A01:E0A:100B:B220:1:2:3:4'", () => {
+    expect(normaliserIp("2A01:E0A:100B:B220:1:2:3:4")).toBe("2a01:e0a:100b:b220::/64");
+  });
+
+  it("deux adresses du meme /64 : meme cle", () => {
+    expect(normaliserIp("2001:db8:1:2::1")).toBe(normaliserIp("2001:db8:1:2:ffff:ffff:ffff:ffff"));
+    expect(normaliserIp("2001:db8:1:2::1")).toBe(normaliserIp("2001:db8:1:2:aaaa:bbbb:cccc:dddd"));
+  });
+
+  it("deux /64 differents : cles differentes (4e groupe different)", () => {
+    expect(normaliserIp("2001:db8:1:2::1")).not.toBe(normaliserIp("2001:db8:1:3::1"));
+  });
+
+  it("deux /64 differents : cles differentes (1er groupe different)", () => {
+    expect(normaliserIp("2001:db8:1:2::1")).not.toBe(normaliserIp("2002:db8:1:2::1"));
+  });
+
+  it("'::' compris dans les 4 premiers groupes est bien developpe ('2001::1' donne '2001:0:0:0::/64')", () => {
+    expect(normaliserIp("2001::1")).toBe("2001:0:0:0::/64");
+  });
+
+  it("'::' en tete : '::1' (boucle locale) donne '0:0:0:0::/64'", () => {
+    expect(normaliserIp("::1")).toBe("0:0:0:0::/64");
+  });
+
+  it("'::' seul : '0:0:0:0::/64'", () => {
+    expect(normaliserIp("::")).toBe("0:0:0:0::/64");
+  });
+
+  it("'::' a la fin : '2001:db8:1:2::' donne '2001:db8:1:2::/64'", () => {
+    expect(normaliserIp("2001:db8:1:2::")).toBe("2001:db8:1:2::/64");
+  });
+
+  it("'::' qui ne remplace qu'un seul groupe ('1:2:3:4:5:6:7::') est accepte", () => {
+    expect(normaliserIp("1:2:3:4:5:6:7::")).toBe("1:2:3:4::/64");
+  });
+
+  it("la valeur rendue se termine par '::/64' pour toute IPv6 valide non mappee", () => {
+    for (const ip of ["fe80::1", "2a01:e0a::5", "fd00:1:2:3:4:5:6:7", "ff02::1"]) {
+      expect(normaliserIp(ip)).toMatch(/::\/64$/);
+    }
+  });
+});
+
+describe("normaliserIp : entrees invalides renvoyees telles quelles", () => {
+  it("'fe80::1%eth0' (identifiant de zone) : renvoyee telle quelle", () => {
+    expect(normaliserIp("fe80::1%eth0")).toBe("fe80::1%eth0");
+  });
+
+  it("'1::2::3' (deux '::') : renvoyee telle quelle", () => {
+    expect(normaliserIp("1::2::3")).toBe("1::2::3");
+  });
+
+  it("'pas-une-ip' : renvoyee telle quelle", () => {
+    expect(normaliserIp("pas-une-ip")).toBe("pas-une-ip");
+  });
+
+  it("chaine vide : renvoyee telle quelle", () => {
+    expect(normaliserIp("")).toBe("");
+  });
+
+  it("trop de groupes (9) : renvoyee telle quelle", () => {
+    expect(normaliserIp("1:2:3:4:5:6:7:8:9")).toBe("1:2:3:4:5:6:7:8:9");
+  });
+
+  it("pas assez de groupes sans '::' (7) : renvoyee telle quelle", () => {
+    expect(normaliserIp("1:2:3:4:5:6:7")).toBe("1:2:3:4:5:6:7");
+  });
+
+  it("'::' qui ne remplacerait aucun groupe (8 groupes explicites) : renvoyee telle quelle", () => {
+    expect(normaliserIp("1:2:3:4:5:6:7::8")).toBe("1:2:3:4:5:6:7::8");
+  });
+
+  it("groupe de plus de 4 chiffres hexa : renvoyee telle quelle", () => {
+    expect(normaliserIp("12345::1")).toBe("12345::1");
+  });
+
+  it("caractere non hexadecimal ('2001:db8::g'): renvoyee telle quelle", () => {
+    expect(normaliserIp("2001:db8::g")).toBe("2001:db8::g");
+  });
+
+  it("IPv4 invalide (octet 256) : renvoyee telle quelle", () => {
+    expect(normaliserIp("256.1.1.1")).toBe("256.1.1.1");
+  });
+
+  it("IPv4 incomplete ('1.2.3') : renvoyee telle quelle", () => {
+    expect(normaliserIp("1.2.3")).toBe("1.2.3");
+  });
+
+  it("IPv4 mappee avec un octet invalide : renvoyee telle quelle", () => {
+    expect(normaliserIp("::ffff:999.1.1.1")).toBe("::ffff:999.1.1.1");
+  });
+
+  it("un point mais aucun ':' ('a.b.c.d') : renvoyee telle quelle", () => {
+    expect(normaliserIp("a.b.c.d")).toBe("a.b.c.d");
+  });
+
+  it("':' seul et ':::' : renvoyes tels quels", () => {
+    expect(normaliserIp(":")).toBe(":");
+    expect(normaliserIp(":::")).toBe(":::");
+  });
+
+  it("chaine invalide tres longue : renvoyee telle quelle, sans exception", () => {
+    const longue = "z".repeat(10_000);
+    expect(() => normaliserIp(longue)).not.toThrow();
+    expect(normaliserIp(longue)).toBe(longue);
+  });
+
+  it("entree invalide en majuscules : rendue en minuscules (la mise en minuscules est faite avant tout)", () => {
+    expect(normaliserIp("PAS-UNE-IP")).toBe("pas-une-ip");
+  });
+
+  it("aucune de ces entrees ne leve d'exception", () => {
+    for (const ip of ["fe80::1%eth0", "1::2::3", "pas-une-ip", "", ":::", "1.2.3.4.5", "::ffff:"]) {
+      expect(() => normaliserIp(ip)).not.toThrow();
+    }
+  });
+});
+
+describe("normaliserIp : proprietes generales", () => {
+  it("idempotente sur une IPv4 et sur un identifiant /64 deja normalise (pas sur la forme '::/64')", () => {
+    expect(normaliserIp(normaliserIp("::ffff:1.2.3.4"))).toBe("1.2.3.4");
+    expect(normaliserIp(normaliserIp("1.2.3.4"))).toBe("1.2.3.4");
+  });
+
+  it("cleIp s'appuie sur la meme normalisation : '::ffff:1.2.3.4' et '1.2.3.4' donnent la meme cle", () => {
+    expect(cleIp("::ffff:1.2.3.4")).toBe(cleIp("1.2.3.4"));
+    expect(cleIp("2001:db8:1:2::1")).toBe(cleIp("2001:DB8:1:2:0:0:0:ABCD"));
   });
 });
 

@@ -25,9 +25,108 @@ export function cleEmail(email: string): string {
   return "email:" + email.toLowerCase().trim();
 }
 
-/** Prefixe different de cleEmail : les deux compteurs ne se melangent jamais. */
+/**
+ * Longueur maximale d'une adresse email utilisable (RFC 5321 : 254
+ * caracteres). La cle du compteur contient l'email entier : sans plafond, un
+ * anonyme pourrait remplir la base gratuite avec des cles enormes.
+ */
+export const LONGUEUR_MAX_EMAIL = 254;
+
+/**
+ * Forme MINIMALE d'une adresse, verifiee avant de creer un compteur pour
+ * elle : au plus 254 caracteres, aucun espace, un seul "@", partie locale et
+ * domaine non vides. Volontairement large (pas de validation complete) : un
+ * email reel ne doit jamais etre refuse ici. Attend une valeur deja normalisee
+ * (trim, minuscules) comme dans authorize().
+ */
+export function emailUtilisableCommeCle(email: string): boolean {
+  if (typeof email !== "string" || email.length > LONGUEUR_MAX_EMAIL) return false;
+  return /^[^\s@]+@[^\s@]+$/.test(email);
+}
+
+const IPV4 = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const GROUPE_IPV6 = /^[0-9a-f]{1,4}$/;
+
+/**
+ * Les 8 groupes de 16 bits d'une IPv6 (deja en minuscules), "::" developpe et
+ * IPv4 finale eventuelle ("::ffff:1.2.3.4") convertie en deux groupes. null si
+ * ce n'est pas une IPv6 valide.
+ */
+function groupesIpv6(ip: string): number[] | null {
+  let texte = ip;
+  if (texte.includes(".")) {
+    const deuxPoints = texte.lastIndexOf(":");
+    if (deuxPoints === -1) return null;
+    const v4 = texte.slice(deuxPoints + 1);
+    if (!IPV4.test(v4)) return null;
+    const o = v4.split(".").map(Number);
+    texte =
+      texte.slice(0, deuxPoints + 1) +
+      ((o[0] << 8) | o[1]).toString(16) +
+      ":" +
+      ((o[2] << 8) | o[3]).toString(16);
+  }
+
+  const moities = texte.split("::");
+  if (moities.length > 2) return null;
+  const lire = (s: string) => (s === "" ? [] : s.split(":"));
+  const avant = lire(moities[0]);
+  const apres = moities.length === 2 ? lire(moities[1]) : [];
+  const explicites = [...avant, ...apres];
+  if (!explicites.every((g) => GROUPE_IPV6.test(g))) return null;
+
+  if (moities.length === 1) {
+    if (avant.length !== 8) return null;
+  } else if (explicites.length > 7) {
+    return null; // "::" remplace au moins un groupe
+  }
+  const zeros = moities.length === 2 ? 8 - explicites.length : 0;
+  return [...avant, ...Array<string>(zeros).fill("0"), ...apres].map((g) => parseInt(g, 16));
+}
+
+/**
+ * Ecriture unique d'une IP pour le compteur :
+ *  - minuscules ;
+ *  - IPv4 : telle quelle ;
+ *  - IPv4 mappee en IPv6 ("::ffff:1.2.3.4", ou sa forme hexadecimale
+ *    "::ffff:102:304") : ramenee a l'IPv4 "1.2.3.4", sinon une meme machine
+ *    aurait deux compteurs selon l'ecriture ;
+ *  - autre IPv6 : son PREFIXE /64, ecrit en forme canonique choisie ici :
+ *    les 4 premiers groupes en hexadecimal minuscule sans zeros de tete,
+ *    separes par ":", suivis de "::/64" (ex. "2001:db8::1" ->
+ *    "2001:db8:0:0::/64", "2A01:E0A:100B:B220:1:2:3:4" ->
+ *    "2a01:e0a:100b:b220::/64"). Un abonne recoit en general un bloc /64
+ *    entier : compter par adresse lui donnerait des milliards de compteurs
+ *    neufs ;
+ *  - toute autre valeur : renvoyee en minuscules, sans exception.
+ */
+export function normaliserIp(ip: string): string {
+  const texte = String(ip).toLowerCase();
+  if (IPV4.test(texte)) return texte;
+  if (!texte.includes(":")) return texte;
+
+  const groupes = groupesIpv6(texte);
+  if (!groupes) return texte;
+
+  const mappee = groupes.slice(0, 5).every((g) => g === 0) && groupes[5] === 0xffff;
+  if (mappee) {
+    return [groupes[6] >> 8, groupes[6] & 0xff, groupes[7] >> 8, groupes[7] & 0xff].join(".");
+  }
+  return (
+    groupes
+      .slice(0, 4)
+      .map((g) => g.toString(16))
+      .join(":") + "::/64"
+  );
+}
+
+/**
+ * Prefixe different de cleEmail : les deux compteurs ne se melangent jamais.
+ * L'IP est normalisee (voir normaliserIp) pour qu'une meme machine, ou un
+ * meme bloc IPv6 /64, n'ait qu'un seul compteur.
+ */
 export function cleIp(ip: string): string {
-  return "ip:" + ip;
+  return "ip:" + normaliserIp(ip);
 }
 
 function ipUtilisable(valeur: string | null | undefined): string | null {
