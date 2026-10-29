@@ -29,6 +29,12 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Ne pas annoncer "X-Powered-By: Next.js" : inutile a un attaquant qui cherche la version.
   poweredByHeader: false,
+  // Les polices du PDF sont lues par chemin a l'execution (Font.register) : Next ne
+  // peut pas deviner qu'elles servent et ne les copierait pas dans la fonction
+  // serverless de Vercel. La cle est la route, crochets echappes (picomatch).
+  outputFileTracingIncludes: {
+    "/api/colocations/\\[id\\]/export": ["./src/assets/fonts/**/*"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
