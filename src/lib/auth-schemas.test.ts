@@ -141,7 +141,9 @@ describe("COUT_BCRYPT", () => {
     expect(hash).toMatch(/^\$2[aby]\$12\$/);
     expect(await bcrypt.compare("MotDePasse-Test-1", hash)).toBe(true);
     expect(await bcrypt.compare("MotDePasse-Test-2", hash)).toBe(false);
-  });
+    // Delai explicite : en parallele avec les 20 autres fichiers, trois calculs de
+    // cout 12 depassent les 5 s par defaut (echec intermittent constate).
+  }, 30_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -200,7 +202,7 @@ describe("HASH_BCRYPT_BIDON : forme", () => {
     // que les deux sont dans la meme famille 2x.
     expect(versionVraie).toMatch(/^2[aby]$/);
     expect(version).toMatch(/^2[aby]$/);
-  });
+  }, 30_000);
 });
 
 describe("HASH_BCRYPT_BIDON : comparaison", () => {
