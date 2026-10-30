@@ -1,0 +1,71 @@
+# Integration continue de RoomFlow.
+#
+# Ce que fait ce workflow, a chaque push et a chaque pull request vers main :
+# installer les dependances a l'identique du package-lock (npm ci), generer les
+# types de routes de Next.js, puis lancer le lint, la verification TypeScript,
+# les tests Vitest et un build de production. Si une etape echoue, l'execution
+# est en echec et le badge du README passe au rouge.
+#
+# Aucun secret, aucune variable d'environnement : tout ce que la CI execute
+# fonctionne sans base de donnees ni cle d'API.
+#  - Les tests Vitest ne couvrent que de la logique pure (la connexion MongoDB
+#    n'est ouverte que dans connectDB(), jamais a l'import).
+#  - Le build ne lit aucune variable : MONGODB_URI, AUTH_SECRET, etc. ne sont
+#    lues qu'a l'execution, quand une requete arrive.
+# Ne jamais ajouter ici de vraie valeur (MONGODB_URI, AUTH_SECRET, RESEND_API_KEY,
+# CRON_SECRET...) : le depot est public et ces valeurs vivent dans Vercel.
+# Les parties qui touchent la base ne sont donc PAS testees par la CI.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Lecture seule : la CI n'a besoin que de lire le code.
+permissions:
+  contents: read
+
+# Un nouveau push sur la meme branche annule l'execution devenue obsolete.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifier:
+    name: Lint, types, tests et build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js 22 (cache npm)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dependances
+        run: npm ci
+
+      # tsconfig.json inclut les types generes par Next.js (PageProps, RouteContext)
+      # qui ne sont pas dans le depot : sans cette etape, tsc ne les trouve pas.
+      - name: Generer les types de routes Next.js
+        run: npx next typegen
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Verifier les types TypeScript
+        run: npx tsc --noEmit
+
+      - name: Tests Vitest
+        run: npm test
+
+      - name: Build de production
+        run: npm run build
