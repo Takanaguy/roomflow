@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
   lireAdminSite,
@@ -14,10 +13,11 @@ import {
 } from "@/lib/nettoyage";
 import BoutonDetruireColocation from "./BoutonDetruireColocation";
 
-export const metadata: Metadata = {
-  title: "Administration",
-  robots: { index: false, follow: false },
-};
+// Volontairement PAS d'`export const metadata` : les metadonnees d'une page se
+// resolvent meme quand elle appelle notFound(), et le titre « Administration »
+// apparaissait alors dans l'onglet d'un visiteur non admin (constate en
+// production). Titre et robots sont donc poses dans le JSX, rendu seulement
+// apres la verification d'acces (React 19 les remonte dans le <head>).
 
 const formatDate = new Intl.DateTimeFormat("fr-FR", {
   dateStyle: "short",
@@ -70,6 +70,8 @@ export default async function AdminPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
+      <title>Administration</title>
+      <meta name="robots" content="noindex, nofollow" />
       <h1 className="text-2xl font-semibold">Administration</h1>
 
       <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

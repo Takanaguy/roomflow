@@ -1,24 +1,18 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 
-/**
- * Verifie que l'app arrive a se connecter a MongoDB. Utile en dev pour
- * diagnostiquer un probleme de chaine de connexion sans devoir passer par
- * une vraie fonctionnalite, et reste un point de sante standard une fois
- * l'app en production.
- */
+// Route publique : elle ne dit que « oui » ou « non ». Le nom de la base, le
+// cluster et les messages d'erreur donnaient des informations utiles a un
+// attaquant. no-store pour qu'aucun cache ne renvoie un vieux « ok ».
+const ENTETES = { "Cache-Control": "no-store" };
+
 export async function GET() {
   try {
-    const conn = await connectDB();
-    return NextResponse.json({
-      ok: true,
-      database: conn.connection.db?.databaseName,
-      host: conn.connection.host,
-    });
+    await connectDB();
+    return NextResponse.json({ ok: true }, { headers: ENTETES });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
-    );
+    // Le nom de l'erreur seulement : son message peut contenir l'adresse du cluster.
+    console.error("health: connexion MongoDB impossible", err instanceof Error ? err.name : "inconnue");
+    return NextResponse.json({ ok: false }, { status: 503, headers: ENTETES });
   }
 }
