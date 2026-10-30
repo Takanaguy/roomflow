@@ -93,7 +93,11 @@ export type ColocationDetail = {
   id: string;
   name: string;
   description?: string;
+  // Chaine VIDE pour la colocation de demonstration : son code ne doit jamais
+  // sortir (un vrai utilisateur pourrait la rejoindre puis perdre ses donnees a
+  // la remise a zero). L'interface masque alors le bloc (`demo`).
   inviteCode: string;
+  demo: boolean;
   monRole: "admin" | "member";
   members: ColocationMembreDetail[];
 };
@@ -121,7 +125,8 @@ export async function serializeHousehold(
     id: household._id.toString(),
     name: household.name,
     description: household.description ?? undefined,
-    inviteCode: household.inviteCode,
+    inviteCode: household.demo === true ? "" : household.inviteCode,
+    demo: household.demo === true,
     monRole: (moi?.role as "admin" | "member") ?? "member",
     members: household.members.map((m: HouseholdMember) => {
       const u = usersById.get(m.userId.toString());

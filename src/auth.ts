@@ -5,6 +5,7 @@ import GitHub from "next-auth/providers/github";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/mongodb";
 import { HASH_BCRYPT_BIDON } from "@/lib/auth-schemas";
+import { emailCompteDemo, estEmailDemo } from "@/lib/demo-email";
 import { estObjectIdValide } from "@/lib/ids";
 import {
   MAX_TENTATIVES_EMAIL,
@@ -125,8 +126,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         const cleDeLEmail = cleEmail(email);
-        const parEmail = await reserverTentative(cleDeLEmail, MAX_TENTATIVES_EMAIL);
-        if (!parEmail.autorise) throw new TropDeTentatives();
+        // Compte demo (mot de passe public) : pas de compteur par email, sinon
+        // n'importe qui le verrouillerait pour tout le monde en ratant 5 essais.
+        // Le compteur par IP, deja passe plus haut, reste actif.
+        if (!estEmailDemo(email, emailCompteDemo(process.env))) {
+          const parEmail = await reserverTentative(cleDeLEmail, MAX_TENTATIVES_EMAIL);
+          if (!parEmail.autorise) throw new TropDeTentatives();
+        }
 
         // provider: "credentials" explicite : un compte cree via Google ne
         // doit jamais pouvoir se connecter par mot de passe, meme s'il en

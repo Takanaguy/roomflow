@@ -20,6 +20,15 @@ export async function DELETE(
     return NextResponse.json({ error: "Introuvable" }, { status: 404 });
   }
 
+  // Colocation de demonstration : ses membres (dont le compte demo, admin) ne
+  // peuvent ni la detruire, ni la quitter, ni changer ses membres ou son admin.
+  if (result.household.demo === true) {
+    return NextResponse.json(
+      { error: "Cette action est désactivée sur la colocation de démonstration." },
+      { status: 403 }
+    );
+  }
+
   if (!isAdminMember(result.membership)) {
     return NextResponse.json(
       { error: "Seul l'admin peut retirer un membre" },
@@ -71,6 +80,15 @@ export async function PATCH(
   const result = await getHouseholdForMember(id, session.user.id);
   if (!result) {
     return NextResponse.json({ error: "Introuvable" }, { status: 404 });
+  }
+
+  // Colocation de demonstration : ses membres (dont le compte demo, admin) ne
+  // peuvent ni la detruire, ni la quitter, ni changer ses membres ou son admin.
+  if (result.household.demo === true) {
+    return NextResponse.json(
+      { error: "Cette action est désactivée sur la colocation de démonstration." },
+      { status: 403 }
+    );
   }
 
   if (!isAdminMember(result.membership)) {

@@ -26,6 +26,15 @@ export async function POST(
     return NextResponse.json({ error: "Introuvable" }, { status: 404 });
   }
 
+  // Colocation de demonstration : ses membres (dont le compte demo, admin) ne
+  // peuvent ni la detruire, ni la quitter, ni changer ses membres ou son admin.
+  if (result.household.demo === true) {
+    return NextResponse.json(
+      { error: "Cette action est désactivée sur la colocation de démonstration." },
+      { status: 403 }
+    );
+  }
+
   const body = await request.json().catch(() => ({}));
   const { force } = bodySchema.parse(body ?? {});
 

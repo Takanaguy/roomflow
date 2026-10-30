@@ -30,8 +30,20 @@ export async function POST(request: Request) {
   // Un compte supprime garde une session valide jusqu'a la prochaine
   // reverification du jeton (5 minutes au plus) : il ne doit pas pouvoir
   // reapparaitre comme membre d'une colocation pendant ce delai.
-  if (!(await UserModel.exists({ _id: session.user.id }))) {
+  const compte = await UserModel.findById(session.user.id)
+    .select("demo")
+    .lean<{ demo?: boolean }>();
+  if (!compte) {
     return NextResponse.json({ error: "Non connecté" }, { status: 401 });
+  }
+  // Compte de demonstration (lu en base, `.lean()` n'applique pas le defaut) :
+  // pas d'autre colocation, pour que la remise a zero de nuit ne detruise jamais
+  // une colocation contenant de vraies personnes.
+  if (compte.demo === true) {
+    return NextResponse.json(
+      { error: "Le compte de démonstration ne peut pas créer ou rejoindre d'autres colocations." },
+      { status: 403 }
+    );
   }
 
   // Une colocation en cours de destruction par le cron (verrou de moins de
@@ -39,6 +51,10 @@ export async function POST(request: Request) {
   // maintenant ne servirait à rien, ses données sont en train d'être effacées.
   const household = await HouseholdModel.findOne({
     inviteCode: parsed.data.inviteCode,
+    // La colocation de demonstration ne se rejoint jamais (sa remise a zero
+    // nocturne detruirait les donnees du nouvel arrivant) : meme reponse qu'un
+    // code invalide.
+    demo: { $ne: true },
     ...filtreHorsDestruction(new Date()),
   });
   if (!household) {

@@ -74,7 +74,8 @@ export default function ColocationClient({
       return;
     }
     if (!res.ok) {
-      setErreur("Impossible de quitter la colocation.");
+      const body = await res.json().catch(() => null);
+      setErreur(body?.error ?? "Impossible de quitter la colocation.");
       return;
     }
     router.push("/tableau-de-bord");
@@ -133,7 +134,8 @@ export default function ColocationClient({
     setEnCoursDestruction(false);
 
     if (!res.ok) {
-      setErreur("Impossible de détruire la colocation.");
+      const body = await res.json().catch(() => null);
+      setErreur(body?.error ?? "Impossible de détruire la colocation.");
       return;
     }
     router.push("/tableau-de-bord");
@@ -228,17 +230,20 @@ export default function ColocationClient({
         </Link>
       </div>
 
-      <div className="mt-3 flex items-center gap-2 rounded-md border border-zinc-200 px-4 py-3">
-        <span className="text-sm text-zinc-500">Code d&apos;invitation</span>
-        <code className="font-mono text-sm">{detail.inviteCode}</code>
-        <button
-          type="button"
-          onClick={copierCode}
-          className="ml-auto rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50"
-        >
-          {copie ? "Copié !" : "Copier"}
-        </button>
-      </div>
+      {/* Colocation de demonstration : pas de code d'invitation (voir serializeHousehold). */}
+      {!detail.demo && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-zinc-200 px-4 py-3">
+          <span className="text-sm text-zinc-500">Code d&apos;invitation</span>
+          <code className="font-mono text-sm">{detail.inviteCode}</code>
+          <button
+            type="button"
+            onClick={copierCode}
+            className="ml-auto rounded-md border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50"
+          >
+            {copie ? "Copié !" : "Copier"}
+          </button>
+        </div>
+      )}
 
       <h2 className="mt-8 text-sm font-medium text-zinc-500">
         Membres ({detail.members.length})

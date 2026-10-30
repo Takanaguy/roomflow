@@ -50,8 +50,20 @@ export async function POST(request: Request) {
   await connectDB();
   // Meme garde que /join : un compte supprime dont la session n'est pas encore
   // revoquee ne doit pas creer une colocation a son nom.
-  if (!(await UserModel.exists({ _id: session.user.id }))) {
+  const compte = await UserModel.findById(session.user.id)
+    .select("demo")
+    .lean<{ demo?: boolean }>();
+  if (!compte) {
     return NextResponse.json({ error: "Non connecté" }, { status: 401 });
+  }
+  // Compte de demonstration (lu en base, `.lean()` n'applique pas le defaut) :
+  // pas d'autre colocation, pour que la remise a zero de nuit ne detruise jamais
+  // une colocation contenant de vraies personnes.
+  if (compte.demo === true) {
+    return NextResponse.json(
+      { error: "Le compte de démonstration ne peut pas créer ou rejoindre d'autres colocations." },
+      { status: 403 }
+    );
   }
 
   const household = await HouseholdModel.create({
