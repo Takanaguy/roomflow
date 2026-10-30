@@ -23,4 +23,24 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  /* `anywhere` et non `break-word` : seul `anywhere` reduit la largeur minimale
+     du texte, donc un mot tres long sans espace (nom de colocation, URL)
+     n'elargit plus un conteneur flex et ne fait plus deborder la page. */
+  overflow-wrap: anywhere;
+}
+
+/* <main> est un enfant d'un conteneur flex en colonne avec `mx-auto` : sans
+   largeur explicite, il se cale sur la largeur naturelle de son contenu, et un
+   titre `truncate` (une seule ligne tres longue) l'elargissait au-dela de
+   l'ecran. `width: 100%` + le `max-w-*` de chaque page donne la bonne largeur. */
+main {
+  width: 100%;
+}
+
+/* Un <select> a la largeur de son option la plus longue (nom de membre long) :
+   on le borne a son conteneur. */
+select,
+input,
+textarea {
+  max-width: 100%;
 }
