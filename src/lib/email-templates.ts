@@ -78,6 +78,19 @@ function formaterDate(date: Date): string {
   return FORMAT_DATE.format(date);
 }
 
+const FORMAT_DATE_LONGUE = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: "UTC",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/** "le 29 novembre 2026". UTC, comme formaterDate : l'echeance ne doit pas glisser d'un jour. */
+function formaterDateSansJour(date: Date): string {
+  if (Number.isNaN(date.getTime())) return "une date à venir";
+  return `le ${FORMAT_DATE_LONGUE.format(date)}`;
+}
+
 /** "a", "a et b", "a, b et c" */
 function listerEnFrancais(elements: string[]): string {
   if (elements.length <= 1) return elements.join("");
@@ -91,8 +104,19 @@ function listerEnFrancais(elements: string[]): string {
  * les clients mail de toute facon).
  */
 function nettoyerSujet(sujet: string): string {
-  const plat = sujet.replace(/\s+/g, " ").trim();
-  return plat.length > LONGUEUR_MAX_SUJET ? `${plat.slice(0, LONGUEUR_MAX_SUJET - 1)}…` : plat;
+  // Caracteres de controle (NUL, BEL, ESC, DEL, C1) remplaces par une espace,
+  // en plus des retours a la ligne : rien de cela n'a sa place dans un en-tete.
+  const plat = sujet
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // On coupe par POINTS DE CODE (le spread itere dessus), pas par unites
+  // UTF-16 : un emoji occupe deux unites, et le couper en deux laisserait un
+  // caractere invalide dans l'objet du mail.
+  const points = [...plat];
+  return points.length > LONGUEUR_MAX_SUJET
+    ? `${points.slice(0, LONGUEUR_MAX_SUJET - 1).join("")}…`
+    : plat;
 }
 
 /**
@@ -350,6 +374,124 @@ export function emailMotDePasse({
     ].join("\n"),
   });
   return { subject: "RoomFlow : réinitialise ton mot de passe", html, text };
+}
+
+const POLICE_CODE = "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace";
+
+/**
+ * Colocation devenue vide : elle sera supprimee avec ses donnees si personne
+ * ne la rejoint. Le code d'invitation est dans le mail car la personne partie
+ * ne peut plus le voir dans l'application, et c'est le seul moyen de la garder.
+ * `lien` est la page « rejoindre » (construit par l'appelant depuis APP_URL).
+ * Pas de pied « desactiver les notifications » : ce mail part meme si elles
+ * sont desactivees (voir notifierColocationVidee).
+ */
+export function emailColocationVidee({
+  nomColocation,
+  suppressionPrevueLe,
+  codeInvitation,
+  lien,
+}: {
+  nomColocation: string;
+  suppressionPrevueLe: Date;
+  codeInvitation: string;
+  lien: string;
+}): EmailRendu {
+  const date = formaterDateSansJour(suppressionPrevueLe);
+  const codeHtml =
+    `<span style="font-family:${POLICE_CODE};font-size:15px;font-weight:600;background-color:${COULEUR_FOND};` +
+    `border:1px solid ${COULEUR_BORDURE};border-radius:4px;padding:2px 6px;">${echapperHtml(codeInvitation)}</span>`;
+
+  const { html, text } = habillerEmail({
+    titre: `La colocation ${nomColocation} n'a plus de membre`,
+    corpsHtml:
+      paragraphe(
+        `Tu es la dernière personne à avoir quitté la colocation <strong>${echapperHtml(nomColocation)}</strong> : ` +
+          "elle n'a plus aucun membre."
+      ) +
+      paragraphe(
+        `Si personne ne la rejoint, elle sera supprimée définitivement <strong>${echapperHtml(date)}</strong>, ` +
+          "avec ses données (dépenses, tâches, courses et remboursements)."
+      ) +
+      paragraphe(
+        `Pour la garder, il suffit de la rejoindre avant cette date avec le code d'invitation ${codeHtml}.`
+      ) +
+      boutonHtml("Rejoindre la colocation", lien) +
+      paragraphe("Si tu ne souhaites pas la garder, tu n'as rien à faire."),
+    corpsTexte: [
+      `Tu es la dernière personne à avoir quitté la colocation ${nomColocation} : elle n'a plus aucun membre.`,
+      `Si personne ne la rejoint, elle sera supprimée définitivement ${date}, avec ses données (dépenses, tâches, courses et remboursements).`,
+      `Pour la garder, il suffit de la rejoindre avant cette date avec le code d'invitation ${codeInvitation}.`,
+      "",
+      `Rejoindre la colocation : ${lien}`,
+      "",
+      "Si tu ne souhaites pas la garder, tu n'as rien à faire.",
+    ].join("\n"),
+    pied: `Tu reçois cet email car tu viens de quitter la colocation ${nomColocation}. Il concerne la suppression de données : il est envoyé même si tu as désactivé les notifications.`,
+  });
+  return {
+    subject: nettoyerSujet(`RoomFlow : la colocation ${nomColocation} n'a plus de membre`),
+    html,
+    text,
+  };
+}
+
+/**
+ * Colocation inactive : elle a des membres mais rien n'y a ete ajoute depuis
+ * longtemps, elle sera supprimee avec ses donnees sans nouvelle activite.
+ * `lien` est la page de la colocation (construit par l'appelant depuis
+ * APP_URL). Pas de pied « desactiver les notifications » : ce mail part meme
+ * si elles sont desactivees (voir notifierColocationInactive). Le nombre de
+ * jours est arrondi : le mail dit « environ ».
+ */
+export function emailColocationInactive({
+  nomColocation,
+  joursInactivite,
+  suppressionPrevueLe,
+  lien,
+}: {
+  nomColocation: string;
+  joursInactivite: number;
+  suppressionPrevueLe: Date;
+  lien: string;
+}): EmailRendu {
+  const date = formaterDateSansJour(suppressionPrevueLe);
+  const jours = Number.isFinite(joursInactivite) ? Math.max(0, Math.round(joursInactivite)) : 0;
+  const duree = `${jours} jour${jours > 1 ? "s" : ""}`;
+
+  const { html, text } = habillerEmail({
+    titre: `La colocation ${nomColocation} est inactive`,
+    corpsHtml:
+      paragraphe(
+        `Personne n'a rien ajouté dans la colocation <strong>${echapperHtml(nomColocation)}</strong> ` +
+          `depuis environ ${echapperHtml(duree)}.`
+      ) +
+      paragraphe(
+        `Sans activité d'ici <strong>${echapperHtml(date)}</strong>, elle sera supprimée définitivement, ` +
+          "avec ses données (dépenses, tâches, courses et remboursements)."
+      ) +
+      paragraphe(
+        "Pour la garder, il suffit d'y ajouter une dépense, une tâche ou un article de courses " +
+          "(ou d'y revenir avec un nouveau membre)."
+      ) +
+      boutonHtml("Ouvrir la colocation", lien) +
+      paragraphe("Si tu ne souhaites pas la garder, tu n'as rien à faire."),
+    corpsTexte: [
+      `Personne n'a rien ajouté dans la colocation ${nomColocation} depuis environ ${duree}.`,
+      `Sans activité d'ici ${date}, elle sera supprimée définitivement, avec ses données (dépenses, tâches, courses et remboursements).`,
+      "Pour la garder, il suffit d'y ajouter une dépense, une tâche ou un article de courses (ou d'y revenir avec un nouveau membre).",
+      "",
+      `Ouvrir la colocation : ${lien}`,
+      "",
+      "Si tu ne souhaites pas la garder, tu n'as rien à faire.",
+    ].join("\n"),
+    pied: `Tu reçois cet email car tu fais partie de la colocation ${nomColocation}. Il concerne la suppression de données : il est envoyé même si tu as désactivé les notifications.`,
+  });
+  return {
+    subject: nettoyerSujet(`RoomFlow : la colocation ${nomColocation} sera supprimée faute d'activité`),
+    html,
+    text,
+  };
 }
 
 /** "google" => "Google", "github" => "GitHub", autre => tel quel. */

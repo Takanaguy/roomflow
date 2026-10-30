@@ -16,6 +16,10 @@ const settlementSchema = new Schema(
   { timestamps: false }
 );
 
+// Aucun index n'existait sur cette collection : le calcul de la derniere
+// activite des colocations (lib/nettoyage.ts) filtre par colocation.
+settlementSchema.index({ householdId: 1, settledAt: -1 });
+
 export type Settlement = InferSchemaType<typeof settlementSchema>;
 
 export default models.Settlement ?? model("Settlement", settlementSchema);

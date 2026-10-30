@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/rappels-taches",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/nettoyage",
+      "schedule": "0 3 * * *"
     }
   ]
 }

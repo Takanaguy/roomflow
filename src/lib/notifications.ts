@@ -1,6 +1,11 @@
 import { connectDB } from "@/lib/mongodb";
 import { envoyerEmail, construireUrl } from "@/lib/email";
-import { emailBienvenue, emailDepense } from "@/lib/email-templates";
+import {
+  emailBienvenue,
+  emailColocationInactive,
+  emailColocationVidee,
+  emailDepense,
+} from "@/lib/email-templates";
 import { remboursementsDepense } from "@/lib/settlements";
 import HouseholdModel from "@/models/Household";
 import UserModel from "@/models/User";
@@ -71,6 +76,102 @@ export async function notifierBienvenue(userId: string, householdId: string): Pr
     console.error(
       `[notifications] échec du mail de bienvenue : ${e instanceof Error ? e.name : "erreur inconnue"}`
     );
+  }
+}
+
+/**
+ * Previent la personne qui vient de vider une colocation qu'elle sera
+ * supprimee, avec le code pour la sauver. Envoye MEME si l'utilisateur a
+ * decoche « Recevoir les notifications par email » : comme les emails de
+ * securite, il avertit d'une suppression de donnees, ce n'est pas une
+ * notification de confort. L'adresse est relue en base a partir de l'id (email
+ * actuel du compte), jamais fournie par le client.
+ */
+export async function notifierColocationVidee(params: {
+  userId: string;
+  nomColocation: string;
+  codeInvitation: string;
+  suppressionPrevueLe: Date;
+}): Promise<void> {
+  try {
+    await connectDB();
+    const user = await UserModel.findById(params.userId).select("email").lean<UtilisateurLu>();
+    if (!user?.email) return;
+
+    const mail = emailColocationVidee({
+      nomColocation: params.nomColocation,
+      suppressionPrevueLe: params.suppressionPrevueLe,
+      codeInvitation: params.codeInvitation,
+      lien: construireUrl("/colocations/rejoindre"),
+    });
+    await envoyerEmail({ to: user.email, ...mail });
+  } catch (e) {
+    console.error(
+      `[notifications] échec du mail de colocation vidée : ${e instanceof Error ? e.name : "erreur inconnue"}`
+    );
+  }
+}
+
+/** Resultat d'un envoi groupe : de quoi savoir si TOUS les membres ont ete prevenus. */
+export type ResultatAvertissement = { envoyes: number; destinataires: number };
+
+/**
+ * Previent TOUS les membres d'une colocation inactive qu'elle sera supprimee.
+ * Les adresses sont relues en base a partir des membres de la colocation,
+ * jamais fournies par l'appelant. Envoye MEME si un membre a decoche les
+ * notifications (il avertit d'une suppression de donnees, comme le mail de
+ * colocation videe).
+ *
+ * Renvoie le nombre d'envois reussis ET le nombre de destinataires : le cron ne
+ * pose le plan de suppression que si les deux sont egaux (un seul membre non
+ * prevenu suffit a ne rien ecrire, un double mail vaut mieux qu'une suppression
+ * sans preavis). Les mails partent UN PAR UN : en parallele, la limite de debit
+ * de Resend en ferait refuser une partie. Ne leve jamais ({0, 0} en cas
+ * d'erreur de lecture).
+ */
+export async function notifierColocationInactive(params: {
+  householdId: string;
+  nomColocation: string;
+  joursInactivite: number;
+  suppressionPrevueLe: Date;
+}): Promise<ResultatAvertissement> {
+  try {
+    await connectDB();
+    const household = await HouseholdModel.findById(params.householdId)
+      .select("members.userId")
+      .lean<{ members?: { userId: { toString(): string } }[] }>();
+    const idsMembres = (household?.members ?? []).map((m) => m.userId.toString());
+    if (idsMembres.length === 0) return { envoyes: 0, destinataires: 0 };
+
+    const utilisateurs = await UserModel.find({ _id: { $in: idsMembres } })
+      .select("email")
+      .lean<UtilisateurLu[]>();
+    // Destinataires = comptes existants avec une adresse (l'email est
+    // obligatoire sur User). Un id de membre sans compte est une reference
+    // orpheline : personne a prevenir, et le compter bloquerait pour toujours
+    // le plan de suppression de cette colocation.
+    const adresses = utilisateurs.map((u) => u.email).filter((e): e is string => Boolean(e));
+    const destinataires = adresses.length;
+    if (destinataires === 0) return { envoyes: 0, destinataires: 0 };
+
+    const mail = emailColocationInactive({
+      nomColocation: params.nomColocation,
+      joursInactivite: params.joursInactivite,
+      suppressionPrevueLe: params.suppressionPrevueLe,
+      lien: construireUrl(`/colocations/${params.householdId}`),
+    });
+
+    let envoyes = 0;
+    for (const to of adresses) {
+      const resultat = await envoyerEmail({ to, ...mail });
+      if (resultat.ok) envoyes++;
+    }
+    return { envoyes, destinataires };
+  } catch (e) {
+    console.error(
+      `[notifications] échec des mails de colocation inactive : ${e instanceof Error ? e.name : "erreur inconnue"}`
+    );
+    return { envoyes: 0, destinataires: 0 };
   }
 }
 
