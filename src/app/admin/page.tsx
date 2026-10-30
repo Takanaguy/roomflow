@@ -11,7 +11,10 @@ import {
   DELAI_SUPPRESSION_JOURS,
   suppressionAutoActive,
 } from "@/lib/nettoyage";
+import { demoActive } from "@/lib/demo";
+import { emailCompteDemo } from "@/lib/demo-email";
 import BoutonDetruireColocation from "./BoutonDetruireColocation";
+import BoutonReinitialiserDemo from "./BoutonReinitialiserDemo";
 
 // Volontairement PAS d'`export const metadata` : les metadonnees d'une page se
 // resolvent meme quand elle appelle notFound(), et le titre « Administration »
@@ -67,6 +70,8 @@ export default async function AdminPage() {
   const autoActive = suppressionAutoActive({
     NETTOYAGE_AUTO_ACTIF: process.env.NETTOYAGE_AUTO_ACTIF,
   });
+  const demoActivee = demoActive({ DEMO_PASSWORD: process.env.DEMO_PASSWORD });
+  const emailDemo = emailCompteDemo({ DEMO_EMAIL: process.env.DEMO_EMAIL });
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
@@ -123,6 +128,28 @@ export default async function AdminPage() {
             Le bouton « Détruire » ci-dessous fonctionne dans tous les cas.
           </li>
         </ul>
+      </section>
+
+      <section className="mt-6 rounded-md border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+        <h2 className="font-medium text-zinc-900">Compte démo</h2>
+        <p className="mt-2">
+          Démo : <strong>{demoActivee ? "activée" : "désactivée"}</strong>
+          {demoActivee
+            ? "."
+            : " (elle ne s'active que si la variable DEMO_PASSWORD est définie, 8 caractères minimum)."}
+        </p>
+        <p className="mt-1">
+          Email du compte démo : <code className="font-mono">{emailDemo}</code>
+        </p>
+        <p className="mt-1">
+          Le mot de passe n&apos;est jamais affiché ici. La démo est remise à zéro chaque nuit par le
+          cron de nettoyage.
+        </p>
+        {demoActivee && (
+          <div className="mt-3">
+            <BoutonReinitialiserDemo />
+          </div>
+        )}
       </section>
 
       {colocations.length === 0 ? (
