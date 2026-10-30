@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { emailCompteDemo, estAdresseSimple, estEmailDemo } from "@/lib/demo-email";
 import { echapperHtml } from "@/lib/email-templates";
 
 const EXPEDITEUR_PAR_DEFAUT = "RoomFlow <onboarding@resend.dev>";
@@ -155,6 +156,19 @@ export async function envoyerEmail({
   text: string;
 }): Promise<ResultatEnvoi> {
   try {
+    // Compte demo et colocataires fictifs : jamais de mail, meme en mode test
+    // (EMAIL_REDIRECT_TO). Verifie sur l'adresse d'origine, avant tout le
+    // reste, et sans ecrire l'adresse dans les logs.
+    // D'abord la forme : une liste d'adresses ou un nom affiche pourrait cacher
+    // une adresse demo derriere une vraie (defense en profondeur, `to` vient de
+    // la base et n'a jamais cette forme).
+    if (!estAdresseSimple(to)) {
+      return { ok: false, erreur: "destinataire invalide" };
+    }
+    if (estEmailDemo(to, emailCompteDemo(process.env))) {
+      return { ok: false, erreur: "destinataire démo" };
+    }
+
     const cle = process.env.RESEND_API_KEY?.trim();
     if (!cle) {
       console.warn("[email] RESEND_API_KEY absente : aucun email envoyé (voir .env.example)");

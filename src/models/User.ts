@@ -38,6 +38,12 @@ const userSchema = new Schema(
     // DUREE_VERROU_SUPPRESSION_MINUTES est repris (suppression interrompue).
     // Absent hors suppression ; disparait avec le compte.
     suppressionDebut: { type: Date },
+    // Marque le compte de demonstration ET les colocataires fictifs de la
+    // colocation d'exemple (lib/demo.ts). Sert a bloquer la suppression et le
+    // changement de mot de passe de ce compte public. Un .lean() n'applique pas
+    // les defauts Mongoose : lire `demo === true`, jamais `!demo`, et toujours
+    // sur l'utilisateur lu EN BASE, pas sur la session.
+    demo: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

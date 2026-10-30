@@ -17,7 +17,12 @@ import UserModel from "@/models/User";
 // un corps sans aucun des deux n'a rien a enregistrer.
 const profilSchema = z
   .object({
-    name: z.string().trim().min(1, "Le nom ne peut pas être vide").optional(),
+    name: z
+      .string()
+      .trim()
+      .min(1, "Le nom ne peut pas être vide")
+      .max(80, "Le nom est trop long (80 caractères max)")
+      .optional(),
     notificationsEmail: z.boolean().optional(),
   })
   .refine((d) => d.name !== undefined || d.notificationsEmail !== undefined, {
@@ -72,6 +77,7 @@ type CompteLu = {
   email: string;
   provider: string;
   passwordHash?: string;
+  demo?: boolean;
 };
 
 /**
@@ -102,10 +108,20 @@ export async function DELETE(request: Request) {
   // Le provider vient de la base, pas de la session : c'est lui qui decide
   // quelle preuve on exige.
   const user = await UserModel.findById(userId)
-    .select("+passwordHash email provider")
+    .select("+passwordHash email provider demo")
     .lean<CompteLu>();
   if (!user) {
     return NextResponse.json({ error: "Compte introuvable" }, { status: 404 });
+  }
+
+  // Compte de demonstration (public, mot de passe dans le README) : jamais
+  // supprimable. AVANT toute verification de mot de passe ou de connexion
+  // recente, et lu en base (`=== true`, .lean() n'applique pas le defaut).
+  if (user.demo === true) {
+    return NextResponse.json(
+      { error: "Le compte de démonstration ne peut pas être supprimé." },
+      { status: 403 }
+    );
   }
 
   if (user.provider === "credentials") {

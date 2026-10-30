@@ -4,6 +4,7 @@ import { z } from "zod";
 import { connectDB } from "@/lib/mongodb";
 import UserModel from "@/models/User";
 import { COUT_BCRYPT, motDePasseSchema } from "@/lib/auth-schemas";
+import { emailCompteDemo, estEmailDemo } from "@/lib/demo-email";
 
 const registerSchema = z.object({
   name: z.string().trim().min(1, "Le nom est requis"),
@@ -26,7 +27,11 @@ export async function POST(request: Request) {
 
   await connectDB();
 
-  const existing = await UserModel.findOne({ email });
+  // L'adresse du compte demo et celles des colocataires fictifs sont reservees,
+  // meme si le compte n'existe pas encore (demo desactivee, avant la premiere
+  // reinitialisation). Meme reponse qu'un email deja utilise.
+  const existing =
+    estEmailDemo(email, emailCompteDemo(process.env)) || (await UserModel.findOne({ email }));
   if (existing) {
     // Message volontairement generique : ne pas confirmer a un attaquant
     // qu'un email precis est deja enregistre.

@@ -345,11 +345,11 @@ describe("envoyerEmail sans RESEND_API_KEY", () => {
     expect(ResendFaux).not.toHaveBeenCalled();
   });
 
-  it("destinataire vide sans cle : c'est l'absence de cle qui est signalee, sans exception", async () => {
+  it("destinataire vide : refuse comme destinataire invalide (la forme est verifiee avant la cle), sans exception", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     await expect(envoyerEmail({ ...mail, to: "" })).resolves.toStrictEqual({
       ok: false,
-      erreur: "Envoi d'emails non configuré",
+      erreur: "destinataire invalide",
     });
   });
 

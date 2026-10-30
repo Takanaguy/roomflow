@@ -95,6 +95,10 @@ export async function traiterDemandeReinitialisation(email: string): Promise<voi
     const user = await UserModel.findOneAndUpdate(
       {
         email: adresse,
+        // Compte demo (mot de passe public) : jamais de jeton ni de mail. Rien
+        // trouve = on s'arrete, comme pour un email inconnu, et la reponse HTTP
+        // est deja partie, identique.
+        demo: { $ne: true },
         $or: [
           { derniereDemandeMdpAt: { $exists: false } },
           { derniereDemandeMdpAt: null },
@@ -183,7 +187,9 @@ export async function reinitialiserMotDePasse(
   const passwordHash = await bcrypt.hash(nouveauMotDePasse, COUT_BCRYPT);
 
   // provider "credentials" dans le filtre : par precaution, un compte Google
-  // ne doit jamais recevoir de mot de passe, meme avec un jeton valide.
+  // ne doit jamais recevoir de mot de passe, meme avec un jeton valide. Meme
+  // chose pour le compte demo (`demo: { $ne: true }`) : son mot de passe est
+  // public et ne change pas ; le refus est le meme qu'un jeton invalide.
   // passwordChangedAt dans la MEME ecriture que le hash : pas d'instant ou le
   // mot de passe aurait change sans que les anciennes sessions soient
   // marquees a revoquer. Les sessions deja ouvertes (JWT stockes dans le
@@ -192,7 +198,7 @@ export async function reinitialiserMotDePasse(
   // tous les INTERVALLE_REVERIFICATION_SECONDES (5 minutes par defaut) et
   // refuse alors toute session ouverte avant elle.
   const maj = await UserModel.updateOne(
-    { _id: doc.userId, provider: "credentials" },
+    { _id: doc.userId, provider: "credentials", demo: { $ne: true } },
     { $set: { passwordHash, passwordChangedAt: new Date() } }
   );
   if (maj.matchedCount === 0) return { ok: false };
